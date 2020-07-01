@@ -16,6 +16,8 @@ type vector interface {
 	PointerAt(i int) interface{}
 	CopyAt(i int) interface{}
 	ConcreteAt(i int) (val interface{}, ok bool)
+	SetConcrete(i int, val interface{})
+	Insert(i int, val interface{})
 }
 
 func newVector(t interface{}, n int) (v vector) {
@@ -66,6 +68,7 @@ func newVector(t interface{}, n int) (v vector) {
 	case []*float64:
 		v = newNullableFloat64Vector(n)
 
+	// string, bool
 	case []string:
 		v = newStringVector(n)
 	case []*string:
@@ -74,12 +77,18 @@ func newVector(t interface{}, n int) (v vector) {
 		v = newBoolVector(n)
 	case []*bool:
 		v = newNullableBoolVector(n)
+
+	// time
 	case []time.Time:
 		v = newTimeTimeVector(n)
 	case []*time.Time:
 		v = newNullableTimeTimeVector(n)
+	case []time.Duration:
+		v = newTimeDurationVector(n)
+	case []*time.Duration:
+		v = newNullableTimeDurationVector(n)
 	default:
-		panic(fmt.Sprintf("unsupported vector type of %T", t))
+		panic(fmt.Sprintf("unsupported field type of %T", t))
 	}
 	return
 }
@@ -144,6 +153,10 @@ func ValidFieldType(t interface{}) bool {
 	case []time.Time:
 		return true
 	case []*time.Time:
+		return true
+	case []time.Duration:
+		return true
+	case []*time.Duration:
 		return true
 	default:
 		return false
@@ -218,6 +231,11 @@ const (
 	FieldTypeTime
 	// FieldTypeNullableTime indicates the underlying primitive is a []*time.Time.
 	FieldTypeNullableTime
+
+	// FieldTypeDuration indicates the underlying primitive is a []time.Duration.
+	FieldTypeDuration
+	// FieldTypeNullableDuration indicates the underlying primitive is a []*time.Duration.
+	FieldTypeNullableDuration
 )
 
 func vectorFieldType(v vector) FieldType {
@@ -286,78 +304,13 @@ func vectorFieldType(v vector) FieldType {
 		return FieldTypeTime
 	case *nullableTimeTimeVector:
 		return FieldTypeNullableTime
+
+	case *timeDurationVector:
+		return FieldTypeDuration
+	case *nullableTimeDurationVector:
+		return FieldTypeNullableDuration
 	}
 
-	return FieldType(-1)
-}
-
-func fieldTypeFromVal(v interface{}) FieldType {
-	switch v.(type) {
-	case int8:
-		return FieldTypeInt8
-	case *int8:
-		return FieldTypeNullableInt8
-
-	case int16:
-		return FieldTypeInt16
-	case *int16:
-		return FieldTypeNullableInt16
-
-	case int32:
-		return FieldTypeInt32
-	case *int32:
-		return FieldTypeNullableInt32
-
-	case int64:
-		return FieldTypeInt64
-	case *int64:
-		return FieldTypeNullableInt64
-
-	case uint8:
-		return FieldTypeUint8
-	case *uint8:
-		return FieldTypeNullableUint8
-
-	case uint16:
-		return FieldTypeUint16
-	case *uint16:
-		return FieldTypeNullableUint16
-
-	case uint32:
-		return FieldTypeUint32
-	case *uint32:
-		return FieldTypeNullableUint32
-
-	case uint64:
-		return FieldTypeUint64
-	case *uint64:
-		return FieldTypeNullableUint64
-
-	case float32:
-		return FieldTypeFloat32
-	case *float32:
-		return FieldTypeNullableFloat32
-
-	case float64:
-		return FieldTypeFloat64
-	case *float64:
-		return FieldTypeNullableFloat64
-
-	case string:
-		return FieldTypeString
-	case *string:
-		return FieldTypeNullableString
-
-	case bool:
-		return FieldTypeBool
-	case *bool:
-		return FieldTypeNullableBool
-
-	case time.Time:
-		return FieldTypeTime
-	case *time.Time:
-		return FieldTypeNullableTime
-	}
 	return FieldType(-1)
 }
 
@@ -369,7 +322,7 @@ func (p FieldType) String() string {
 
 }
 
-// NewFieldFromFieldType creates a new Field of the given pType of length n.
+// NewFieldFromFieldType creates a new Field of the given FieldType of length n.
 func NewFieldFromFieldType(p FieldType, n int) *Field {
 	f := &Field{}
 	switch p {
@@ -441,10 +394,69 @@ func NewFieldFromFieldType(p FieldType, n int) *Field {
 		f.vector = newTimeTimeVector(n)
 	case FieldTypeNullableTime:
 		f.vector = newNullableTimeTimeVector(n)
+
+	case FieldTypeDuration:
+		f.vector = newTimeDurationVector(n)
+	case FieldTypeNullableDuration:
+		f.vector = newNullableTimeDurationVector(n)
+
 	default:
-		panic(fmt.Sprint("unsupported vector ptype"))
+		panic("unsupported FieldType")
 	}
 	return f
+}
+
+// NullableType converts the FieldType to the corresponding nullable type.
+func (p FieldType) NullableType() FieldType {
+	switch p {
+	// ints
+	case FieldTypeInt8, FieldTypeNullableInt8:
+		return FieldTypeNullableInt8
+
+	case FieldTypeInt16, FieldTypeNullableInt16:
+		return FieldTypeNullableInt16
+
+	case FieldTypeInt32, FieldTypeNullableInt32:
+		return FieldTypeNullableInt32
+
+	case FieldTypeInt64, FieldTypeNullableInt64:
+		return FieldTypeNullableInt64
+
+	// uints
+	case FieldTypeUint8, FieldTypeNullableUint8:
+		return FieldTypeNullableUint8
+
+	case FieldTypeUint16, FieldTypeNullableUint16:
+		return FieldTypeNullableUint16
+
+	case FieldTypeUint32, FieldTypeNullableUint32:
+		return FieldTypeNullableUint32
+
+	case FieldTypeUint64, FieldTypeNullableUint64:
+		return FieldTypeNullableUint64
+
+	// floats
+	case FieldTypeFloat32, FieldTypeNullableFloat32:
+		return FieldTypeNullableFloat32
+
+	case FieldTypeFloat64, FieldTypeNullableFloat64:
+		return FieldTypeNullableFloat64
+
+	// other
+	case FieldTypeString, FieldTypeNullableString:
+		return FieldTypeNullableString
+
+	case FieldTypeBool, FieldTypeNullableBool:
+		return FieldTypeNullableBool
+
+	case FieldTypeTime, FieldTypeNullableTime:
+		return FieldTypeNullableTime
+
+	case FieldTypeDuration, FieldTypeNullableDuration:
+		return FieldTypeDuration
+	default:
+		panic(fmt.Sprintf("unsupported field type: %+v", p))
+	}
 }
 
 // ItemTypeString returns the string representation of the type of element within in the vector
@@ -514,7 +526,13 @@ func (p FieldType) ItemTypeString() string {
 		return "time.Time"
 	case FieldTypeNullableTime:
 		return "*time.Time"
+
+	case FieldTypeDuration:
+		return "time.Duration"
+	case FieldTypeNullableDuration:
+		return "*time.Duration"
 	}
+
 	return "invalid/unsupported type"
 }
 
@@ -537,6 +555,31 @@ func (p FieldType) Nullable() bool {
 		return true
 
 	case FieldTypeNullableTime:
+		return true
+
+	case FieldTypeNullableDuration:
+		return true
+	}
+
+	return false
+}
+
+// Numeric returns if Field type is a nullable type
+func (p FieldType) Numeric() bool {
+	switch p {
+	case FieldTypeInt8, FieldTypeInt16, FieldTypeInt32, FieldTypeInt64:
+		return true
+	case FieldTypeNullableInt8, FieldTypeNullableInt16, FieldTypeNullableInt32, FieldTypeNullableInt64:
+		return true
+
+	case FieldTypeUint8, FieldTypeUint16, FieldTypeUint32, FieldTypeUint64:
+		return true
+	case FieldTypeNullableUint8, FieldTypeNullableUint16, FieldTypeNullableUint32, FieldTypeNullableUint64:
+		return true
+
+	case FieldTypeFloat32, FieldTypeFloat64:
+		return true
+	case FieldTypeNullableFloat32, FieldTypeNullableFloat64:
 		return true
 	}
 	return false

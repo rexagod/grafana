@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/textproto"
 	"runtime"
 	"strconv"
 	"strings"
@@ -40,18 +41,31 @@ func (hs *HTTPServer) RenderToPng(c *models.ReqContext) {
 		return
 	}
 
-	maxConcurrentLimitForApiCalls := 30
+	scale, err := strconv.ParseFloat(queryReader.Get("scale", "1"), 64)
+	if err != nil {
+		c.Handle(400, "Render parameters error", fmt.Errorf("Cannot parse scale as float: %s", err))
+		return
+	}
+
+	headers := http.Header{}
+	acceptLanguageHeader := textproto.MIMEHeader(c.Req.Header)[textproto.CanonicalMIMEHeaderKey("Accept-Language")]
+	if len(acceptLanguageHeader) > 0 {
+		headers["Accept-Language"] = acceptLanguageHeader
+	}
+
 	result, err := hs.RenderService.Render(c.Req.Context(), rendering.Opts{
-		Width:           width,
-		Height:          height,
-		Timeout:         time.Duration(timeout) * time.Second,
-		OrgId:           c.OrgId,
-		UserId:          c.UserId,
-		OrgRole:         c.OrgRole,
-		Path:            c.Params("*") + queryParams,
-		Timezone:        queryReader.Get("tz", ""),
-		Encoding:        queryReader.Get("encoding", ""),
-		ConcurrentLimit: maxConcurrentLimitForApiCalls,
+		Width:             width,
+		Height:            height,
+		Timeout:           time.Duration(timeout) * time.Second,
+		OrgId:             c.OrgId,
+		UserId:            c.UserId,
+		OrgRole:           c.OrgRole,
+		Path:              c.Params("*") + queryParams,
+		Timezone:          queryReader.Get("tz", ""),
+		Encoding:          queryReader.Get("encoding", ""),
+		ConcurrentLimit:   hs.Cfg.RendererConcurrentRequestLimit,
+		DeviceScaleFactor: scale,
+		Headers:           headers,
 	})
 
 	if err != nil && err == rendering.ErrTimeout {

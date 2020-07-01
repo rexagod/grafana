@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/apache/arrow/go/arrow"
@@ -17,7 +15,7 @@ import (
 
 // MarshalArrow converts the Frame to an arrow table and returns a byte
 // representation of that table.
-func MarshalArrow(f *Frame) ([]byte, error) {
+func (f *Frame) MarshalArrow() ([]byte, error) {
 	arrowFields, err := buildArrowFields(f)
 	if err != nil {
 		return nil, err
@@ -72,28 +70,7 @@ func MarshalArrow(f *Frame) ([]byte, error) {
 	return fb.Buff.Bytes(), nil
 }
 
-// fieldNamePrefixSep is the delimiter used with fieldNamePrefix.
-const fieldNamePrefixSep = "🦥: "
-
-// fieldNamePrefix is the fmt string for Field Names. We prefix the name with fieldIdx number, sloth, :, space
-// to ensure names are unique. The prefix is removed upon reading.
-const fieldNamePrefix = "%s" + fieldNamePrefixSep + "%s"
-
-// prefixFieldName adds our special fieldNamePrefix to the fieldNames so they are unique when writing to arrow.
-func prefixFieldName(fieldIdx int, name string) string {
-	return fmt.Sprintf(fieldNamePrefix, strconv.Itoa(fieldIdx), name)
-}
-
-// prefixFieldNameStrip adds our special fieldNamePrefix from Field Names when reading from arrow.
-func prefixFieldNameStrip(name string) string {
-	sp := strings.SplitN(name, fieldNamePrefixSep, 2)
-	if len(sp) == 2 {
-		return sp[1]
-	}
-	return name
-}
-
-// buildArrowFields builds Arrow field definitions from a DataFrame.
+// buildArrowFields builds Arrow field definitions from a Frame.
 func buildArrowFields(f *Frame) ([]arrow.Field, error) {
 	arrowFields := make([]arrow.Field, len(f.Fields))
 
@@ -103,7 +80,7 @@ func buildArrowFields(f *Frame) ([]arrow.Field, error) {
 			return nil, err
 		}
 
-		fieldMeta := map[string]string{"name": prefixFieldName(i, field.Name)}
+		fieldMeta := map[string]string{"name": field.Name}
 
 		if field.Labels != nil {
 			if fieldMeta["labels"], err = toJSONString(field.Labels); err != nil {
@@ -120,7 +97,7 @@ func buildArrowFields(f *Frame) ([]arrow.Field, error) {
 		}
 
 		arrowFields[i] = arrow.Field{
-			Name:     prefixFieldName(i, field.Name),
+			Name:     field.Name,
 			Type:     t,
 			Metadata: arrow.MetadataFrom(fieldMeta),
 			Nullable: nullable,
@@ -203,6 +180,11 @@ func buildArrowColumns(f *Frame, arrowFields []arrow.Field) ([]array.Column, err
 		case *nullableTimeTimeVector:
 			columns[fieldIdx] = *buildNullableTimeColumn(pool, arrowFields[fieldIdx], v)
 
+		case *timeDurationVector:
+			columns[fieldIdx] = *buildDurationColumn(pool, arrowFields[fieldIdx], v)
+		case *nullableTimeDurationVector:
+			columns[fieldIdx] = *buildNullableDurationColumn(pool, arrowFields[fieldIdx], v)
+
 		default:
 			return nil, fmt.Errorf("unsupported field vector type for conversion to arrow: %T", v)
 		}
@@ -222,13 +204,6 @@ func buildArrowSchema(f *Frame, fs []arrow.Field) (*arrow.Schema, error) {
 			return nil, err
 		}
 		tableMetaMap["meta"] = str
-	}
-	if len(f.Warnings) > 0 {
-		str, err := toJSONString(f.Warnings)
-		if err != nil {
-			return nil, err
-		}
-		tableMetaMap["warnings"] = str
 	}
 	tableMeta := arrow.MetadataFrom(tableMetaMap)
 
@@ -307,6 +282,11 @@ func fieldToArrow(f *Field) (arrow.DataType, bool, error) {
 	case *nullableTimeTimeVector:
 		return &arrow.TimestampType{}, true, nil
 
+	case *timeDurationVector:
+		return &arrow.DurationType{}, false, nil
+	case *nullableTimeDurationVector:
+		return &arrow.DurationType{}, true, nil
+
 	default:
 		return nil, false, fmt.Errorf("unsupported type for conversion to arrow: %T", f.vector)
 	}
@@ -324,7 +304,7 @@ func initializeFrameFields(schema *arrow.Schema, frame *Frame) ([]bool, error) {
 	nullable := make([]bool, len(schema.Fields()))
 	for idx, field := range schema.Fields() {
 		sdkField := &Field{
-			Name: prefixFieldNameStrip(field.Name),
+			Name: field.Name,
 		}
 		if labelsAsString, ok := getMDKey("labels", field.Metadata); ok {
 			if err := json.Unmarshal([]byte(labelsAsString), &sdkField.Labels); err != nil {
@@ -416,6 +396,12 @@ func initializeFrameFields(schema *arrow.Schema, frame *Frame) ([]bool, error) {
 				break
 			}
 			sdkField.vector = newTimeTimeVector(0)
+		case arrow.DURATION:
+			if nullable[idx] {
+				sdkField.vector = newNullableTimeDurationVector(0)
+				break
+			}
+			sdkField.vector = newTimeDurationVector(0)
 		default:
 			return nullable, fmt.Errorf("unsupported conversion from arrow to sdk type for arrow type %v", field.Type.ID().String())
 		}
@@ -632,6 +618,21 @@ func populateFrameFields(fR *ipc.FileReader, nullable []bool, frame *Frame) erro
 					}
 					frame.Fields[i].vector.Append(t)
 				}
+			case arrow.DURATION:
+				v := array.NewDurationData(col.Data())
+				for vIdx, durNano := range v.DurationValues() {
+					dur := time.Duration(durNano) // nanosecond assumption (again)
+					if nullable[i] {
+						if v.IsNull(vIdx) {
+							var nDur *time.Duration
+							frame.Fields[i].vector.Append(nDur)
+							continue
+						}
+						frame.Fields[i].vector.Append(&dur)
+						continue
+					}
+					frame.Fields[i].vector.Append(dur)
+				}
 			default:
 				return fmt.Errorf("unsupported arrow type %s for conversion", col.DataType().ID())
 			}
@@ -640,8 +641,8 @@ func populateFrameFields(fR *ipc.FileReader, nullable []bool, frame *Frame) erro
 	return nil
 }
 
-// UnmarshalArrow converts a byte representation of an arrow table to a Frame
-func UnmarshalArrow(b []byte) (*Frame, error) {
+// UnmarshalArrowFrame converts a byte representation of an arrow table to a Frame.
+func UnmarshalArrowFrame(b []byte) (*Frame, error) {
 	fB := filebuffer.New(b)
 	fR, err := ipc.NewFileReader(fB)
 	if err != nil {
@@ -657,15 +658,7 @@ func UnmarshalArrow(b []byte) (*Frame, error) {
 
 	if metaAsString, ok := getMDKey("meta", metaData); ok {
 		var err error
-		frame.Meta, err = QueryResultMetaFromJSON(metaAsString)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if warningsAsString, ok := getMDKey("warnings", metaData); ok {
-		var err error
-		frame.Warnings, err = WarningsFromJSON(warningsAsString)
+		frame.Meta, err = FrameMetaFromJSON(metaAsString)
 		if err != nil {
 			return nil, err
 		}
@@ -691,4 +684,35 @@ func toJSONString(val interface{}) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// UnmarshalArrowFrames decodes a slice of Arrow encoded frames to Frames ([]*Frame) by calling
+// the UnmarshalArrow function on each encoded frame.
+// If an error occurs Frames will be nil.
+// See Frames.UnMarshalArrow() for the inverse operation.
+func UnmarshalArrowFrames(bFrames [][]byte) (Frames, error) {
+	frames := make(Frames, len(bFrames))
+	var err error
+	for i, encodedFrame := range bFrames {
+		frames[i], err = UnmarshalArrowFrame(encodedFrame)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return frames, nil
+}
+
+// MarshalArrow encodes Frames into a slice of []byte using *Frame's MarshalArrow method on each Frame.
+// If an error occurs [][]byte will be nil.
+// See UnmarshalArrowFrames for the inverse operation.
+func (frames Frames) MarshalArrow() ([][]byte, error) {
+	bs := make([][]byte, len(frames))
+	var err error
+	for i, frame := range frames {
+		bs[i], err = frame.MarshalArrow()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return bs, nil
 }
