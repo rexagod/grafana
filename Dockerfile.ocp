@@ -1,5 +1,5 @@
 # Golang build container
-FROM openshift/origin-release:golang-1.13 AS builder
+FROM openshift/origin-release:golang-1.14 AS builder
 
 WORKDIR $GOPATH/src/github.com/grafana/grafana
 ENV GOFLAGS="-mod=vendor"
