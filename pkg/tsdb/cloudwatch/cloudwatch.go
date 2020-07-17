@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/data"
+
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi/resourcegroupstaggingapiiface"
@@ -39,8 +41,8 @@ type DatasourceInfo struct {
 const cloudWatchTSFormat = "2006-01-02 15:04:05.000"
 
 // Constants also defined in datasource/cloudwatch/datasource.ts
-const LOG_IDENTIFIER_INTERNAL = "__log__grafana_internal__"
-const LOGSTREAM_IDENTIFIER_INTERNAL = "__logstream__grafana_internal__"
+const logIdentifierInternal = "__log__grafana_internal__"
+const logStreamIdentifierInternal = "__logstream__grafana_internal__"
 
 func (e *CloudWatchExecutor) getLogsClient(region string) (*cloudwatchlogs.CloudWatchLogs, error) {
 	e.mux.Lock()
@@ -79,15 +81,11 @@ func NewCloudWatchExecutor(datasource *models.DataSource) (tsdb.TsdbQueryEndpoin
 	}, nil
 }
 
-var (
-	plog        log.Logger
-	aliasFormat *regexp.Regexp
-)
+var plog = log.New("tsdb.cloudwatch")
+var aliasFormat = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
 
 func init() {
-	plog = log.New("tsdb.cloudwatch")
 	tsdb.RegisterTsdbQueryEndpoint("cloudwatch", NewCloudWatchExecutor)
-	aliasFormat = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
 }
 
 func (e *CloudWatchExecutor) alertQuery(ctx context.Context, logsClient *cloudwatchlogs.CloudWatchLogs, queryContext *tsdb.TsdbQuery) (*cloudwatchlogs.GetQueryResultsOutput, error) {
@@ -96,7 +94,6 @@ func (e *CloudWatchExecutor) alertQuery(ctx context.Context, logsClient *cloudwa
 
 	queryParams := queryContext.Queries[0].Model
 	startQueryOutput, err := e.executeStartQuery(ctx, logsClient, queryParams, queryContext.TimeRange)
-
 	if err != nil {
 		return nil, err
 	}
@@ -111,11 +108,14 @@ func (e *CloudWatchExecutor) alertQuery(ctx context.Context, logsClient *cloudwa
 
 	attemptCount := 1
 	for range ticker.C {
-		if res, err := e.executeGetQueryResults(ctx, logsClient, requestParams); err != nil {
+		res, err := e.executeGetQueryResults(ctx, logsClient, requestParams)
+		if err != nil {
 			return nil, err
-		} else if isTerminated(*res.Status) {
+		}
+		if isTerminated(*res.Status) {
 			return res, err
-		} else if attemptCount >= maxAttempts {
+		}
+		if attemptCount >= maxAttempts {
 			return res, fmt.Errorf("fetching of query results exceeded max number of attempts")
 		}
 
@@ -126,7 +126,6 @@ func (e *CloudWatchExecutor) alertQuery(ctx context.Context, logsClient *cloudwa
 }
 
 func (e *CloudWatchExecutor) Query(ctx context.Context, dsInfo *models.DataSource, queryContext *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	var result *tsdb.Response
 	e.DataSource = dsInfo
 
 	/*
@@ -144,8 +143,9 @@ func (e *CloudWatchExecutor) Query(ctx context.Context, dsInfo *models.DataSourc
 	}
 
 	queryType := queryParams.Get("type").MustString("")
-	var err error
 
+	var err error
+	var result *tsdb.Response
 	switch queryType {
 	case "metricFindQuery":
 		result, err = e.executeMetricFindQuery(ctx, queryContext)
@@ -185,7 +185,7 @@ func (e *CloudWatchExecutor) executeLogAlertQuery(ctx context.Context, queryCont
 
 	queryParams.Set("queryId", *result.QueryId)
 
-	// Get Query Results
+	// Get query results
 	getQueryResultsOutput, err := e.alertQuery(ctx, logsClient, queryContext)
 	if err != nil {
 		return nil, err
@@ -203,41 +203,26 @@ func (e *CloudWatchExecutor) executeLogAlertQuery(ctx context.Context, queryCont
 			return nil, err
 		}
 
-		encodedFrames := make([][]byte, 0)
-		for _, frame := range groupedFrames {
-			dataframeEnc, err := frame.MarshalArrow()
-			if err != nil {
-				return nil, err
-			}
-			encodedFrames = append(encodedFrames, dataframeEnc)
-		}
-
 		response := &tsdb.Response{
 			Results: make(map[string]*tsdb.QueryResult),
 		}
 
 		response.Results["A"] = &tsdb.QueryResult{
 			RefId:      "A",
-			Dataframes: encodedFrames,
+			Dataframes: tsdb.NewDecodedDataFrames(groupedFrames),
 		}
 
 		return response, nil
 	}
 
-	dataframeEnc, err := dataframe.MarshalArrow()
-	if err != nil {
-		return nil, err
-	}
-
 	response := &tsdb.Response{
-		Results: make(map[string]*tsdb.QueryResult),
+		Results: map[string]*tsdb.QueryResult{
+			"A": {
+				RefId:      "A",
+				Dataframes: tsdb.NewDecodedDataFrames(data.Frames{dataframe}),
+			},
+		},
 	}
-
-	response.Results["A"] = &tsdb.QueryResult{
-		RefId:      "A",
-		Dataframes: [][]byte{dataframeEnc},
-	}
-
 	return response, nil
 }
 

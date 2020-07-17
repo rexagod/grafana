@@ -453,7 +453,7 @@ func (server *Server) AdminBind() error {
 	err := server.userBind(server.Config.BindDN, server.Config.BindPassword)
 	if err != nil {
 		server.log.Error(
-			"Cannot authentificate admin user in LDAP",
+			"Cannot authenticate admin user in LDAP",
 			"error",
 			err,
 		)
@@ -538,7 +538,6 @@ func (server *Server) requestMemberOf(entry *ldap.Entry) ([]string, error) {
 					getAttribute(groupIDAttribute, group),
 				)
 			}
-			break
 		}
 	}
 

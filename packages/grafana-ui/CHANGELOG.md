@@ -1,5 +1,20 @@
+# 7.0.4 (2020-06-25)
 
-* **Forms**: Remove Forms namespace [BREAKING]. Will cause all `Forms` imports to stop working. See migration guide below. [#24378](https://github.com/grafana/grafana/pull/24378), [@tskarhed](https://github.com/tskarhed)
+### Features / Enhancements
+* **Slider**: Update rc-slider dependency to 9.3.1. [#25617](https://github.com/grafana/grafana/pull/25617), [@torkelo](https://github.com/torkelo)
+
+# 7.0.0 (2020-05-18)
+
+### Bug Fixes
+
+* **Explore**: Fixes loading more logs in logs context view. [#24135](https://github.com/grafana/grafana/pull/24135), [@Estrax](https://github.com/Estrax)
+
+# 7.0.0-beta3 (2020-05-08)
+
+### Features / Enhancements
+
+- **Forms**: Remove Forms namespace [BREAKING]. Will cause all `Forms` imports to stop working. See migration guide below. [#24378](https://github.com/grafana/grafana/pull/24378), [@tskarhed](https://github.com/tskarhed)
+
 # 7.0.0-beta.2 (2020-05-07)
 
 ### Bug Fixes
@@ -98,7 +113,7 @@ onCreateOption={(customValue) => {
 
 - **@grafana/ui**: Create Icon component and replace icons. [#23402](https://github.com/grafana/grafana/pull/23402), [@ivanahuckova](https://github.com/ivanahuckova)
 - **@grafana/ui**: Create slider component. [#22275](https://github.com/grafana/grafana/pull/22275), [@ivanahuckova](https://github.com/ivanahuckova)
-- **@grafana/ui**: Remove ColorPallete component. [#23592](https://github.com/grafana/grafana/pull/23592), [@ivanahuckova](https://github.com/ivanahuckova)
+- **@grafana/ui**: Remove ColorPalette component. [#23592](https://github.com/grafana/grafana/pull/23592), [@ivanahuckova](https://github.com/ivanahuckova)
 - **Components**: IconButton. [#23510](https://github.com/grafana/grafana/pull/23510), [@torkelo](https://github.com/torkelo)
 - **Docs**: Adding API reference documentation support for the packages libraries. [#21931](https://github.com/grafana/grafana/pull/21931), [@mckn](https://github.com/mckn)
 - **Migration**: Add old Input to legacy namespace. [#23286](https://github.com/grafana/grafana/pull/23286), [@tskarhed](https://github.com/tskarhed)
