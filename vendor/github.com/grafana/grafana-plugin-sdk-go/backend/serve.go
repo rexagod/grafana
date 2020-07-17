@@ -8,6 +8,19 @@ import (
 	"google.golang.org/grpc"
 )
 
+const defaultServerMaxReceiveMessageSize = 1024 * 1024 * 16
+
+// GRPCSettings settings for gRPC.
+type GRPCSettings struct {
+	// MaxReceiveMsgSize the max gRPC message size in bytes the plugin can receive.
+	// If this is <= 0, gRPC uses the default 16MB.
+	MaxReceiveMsgSize int
+
+	// MaxSendMsgSize the max gRPC message size in bytes the plugin can send.
+	// If this is <= 0, gRPC uses the default `math.MaxInt32`.
+	MaxSendMsgSize int
+}
+
 //ServeOpts options for serving plugins.
 type ServeOpts struct {
 	// CheckHealthHandler handler for health checks.
@@ -26,13 +39,8 @@ type ServeOpts struct {
 	// Optional to implement.
 	TransformDataHandler TransformDataHandler
 
-	// MaxGRPCReceiveMsgSize the max gRPC message size in bytes the plugin can receive.
-	// If this is <= 0, gRPC uses the default 4MB.
-	MaxGRPCReceiveMsgSize int
-
-	// MaxGRPCSendMsgSize the max gRPC message size in bytes the plugin can send.
-	// If this is <= 0, gRPC uses the default `math.MaxInt32`.
-	MaxGRPCSendMsgSize int
+	// GRPCSettings settings for gPRC.
+	GRPCSettings GRPCSettings
 }
 
 // Serve starts serving the plugin over gRPC.
@@ -63,12 +71,14 @@ func Serve(opts ServeOpts) error {
 		)),
 	}
 
-	if opts.MaxGRPCReceiveMsgSize > 0 {
-		grpcMiddlewares = append([]grpc.ServerOption{grpc.MaxRecvMsgSize(opts.MaxGRPCReceiveMsgSize)}, grpcMiddlewares...)
+	if opts.GRPCSettings.MaxReceiveMsgSize <= 0 {
+		opts.GRPCSettings.MaxReceiveMsgSize = defaultServerMaxReceiveMessageSize
 	}
 
-	if opts.MaxGRPCSendMsgSize > 0 {
-		grpcMiddlewares = append([]grpc.ServerOption{grpc.MaxSendMsgSize(opts.MaxGRPCSendMsgSize)}, grpcMiddlewares...)
+	grpcMiddlewares = append([]grpc.ServerOption{grpc.MaxRecvMsgSize(opts.GRPCSettings.MaxReceiveMsgSize)}, grpcMiddlewares...)
+
+	if opts.GRPCSettings.MaxSendMsgSize > 0 {
+		grpcMiddlewares = append([]grpc.ServerOption{grpc.MaxSendMsgSize(opts.GRPCSettings.MaxSendMsgSize)}, grpcMiddlewares...)
 	}
 
 	pluginOpts.GRPCServer = func(opts []grpc.ServerOption) *grpc.Server {

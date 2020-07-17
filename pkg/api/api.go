@@ -267,7 +267,7 @@ func (hs *HTTPServer) registerRoutes() {
 		apiRoute.Any("/datasources/proxy/:id", reqSignedIn, hs.ProxyDataSourceRequest)
 		apiRoute.Any("/datasources/:id/resources", hs.CallDatasourceResource)
 		apiRoute.Any("/datasources/:id/resources/*", hs.CallDatasourceResource)
-		apiRoute.Any("/datasources/:id/health", hs.CheckDatasourceHealth)
+		apiRoute.Any("/datasources/:id/health", Wrap(hs.CheckDatasourceHealth))
 
 		// Folders
 		apiRoute.Group("/folders", func(folderRoute routing.RouteRegister) {
@@ -298,7 +298,7 @@ func (hs *HTTPServer) registerRoutes() {
 			dashboardRoute.Post("/calculate-diff", bind(dtos.CalculateDiffOptions{}), Wrap(CalculateDashboardDiff))
 
 			dashboardRoute.Post("/db", bind(models.SaveDashboardCommand{}), Wrap(hs.PostDashboard))
-			dashboardRoute.Get("/home", Wrap(GetHomeDashboard))
+			dashboardRoute.Get("/home", Wrap(hs.GetHomeDashboard))
 			dashboardRoute.Get("/tags", GetDashboardTags)
 			dashboardRoute.Post("/import", bind(dtos.ImportDashboardCommand{}), Wrap(ImportDashboard))
 
@@ -404,7 +404,8 @@ func (hs *HTTPServer) registerRoutes() {
 		adminRoute.Get("/users/:id/auth-tokens", Wrap(hs.AdminGetUserAuthTokens))
 		adminRoute.Post("/users/:id/revoke-auth-token", bind(models.RevokeAuthTokenCmd{}), Wrap(hs.AdminRevokeUserAuthToken))
 
-		adminRoute.Post("/provisioning/dashboards/reload", Wrap(hs.AdminProvisioningReloadDasboards))
+		adminRoute.Post("/provisioning/dashboards/reload", Wrap(hs.AdminProvisioningReloadDashboards))
+		adminRoute.Post("/provisioning/plugins/reload", Wrap(hs.AdminProvisioningReloadPlugins))
 		adminRoute.Post("/provisioning/datasources/reload", Wrap(hs.AdminProvisioningReloadDatasources))
 		adminRoute.Post("/provisioning/notifications/reload", Wrap(hs.AdminProvisioningReloadNotifications))
 		adminRoute.Post("/ldap/reload", Wrap(hs.ReloadLDAPCfg))

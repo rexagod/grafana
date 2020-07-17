@@ -13,7 +13,7 @@ interface ValueFormatTest {
 }
 
 const formatTests: ValueFormatTest[] = [
-  // Currancy
+  // Currency
   { id: 'currencyUSD', decimals: 2, value: 1532.82, result: '$1.53K' },
   { id: 'currencyKRW', decimals: 2, value: 1532.82, result: '₩1.53K' },
 
@@ -48,6 +48,7 @@ const formatTests: ValueFormatTest[] = [
 
   // Prefix (unknown units append to the end)
   { id: 'prefix:b', value: 1532.82, result: 'b1533' },
+  { id: 'suffix:d', value: 1532.82, result: '1533 d' },
 
   // SI Units
   { id: 'si:µF', value: 1234, decimals: 2, result: '1.23 mF' },

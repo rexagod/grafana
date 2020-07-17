@@ -310,7 +310,6 @@ export interface QueryEditorProps<
    * Contains query response filtered by refId of QueryResultBase and possible query error
    */
   data?: PanelData;
-  exploreMode?: ExploreMode;
   exploreId?: any;
   history?: HistoryItem[];
 }
@@ -334,13 +333,11 @@ export interface ExploreQueryFieldProps<
   history: any[];
   onBlur?: () => void;
   absoluteRange?: AbsoluteTimeRange;
-  exploreMode?: ExploreMode;
   exploreId?: any;
 }
 
 export interface ExploreStartPageProps {
   datasource?: DataSourceApi;
-  exploreMode: ExploreMode;
   onClickExample: (query: DataQuery) => void;
   exploreId?: any;
 }
@@ -524,9 +521,9 @@ export interface DataSourceInstanceSettings<T extends DataSourceJsonData = DataS
   database?: string;
 
   /**
-   * This is the full Authorization header if basic auth is ennabled.
+   * This is the full Authorization header if basic auth is enabled.
    * Only available here when access is Browser (direct), when access is Server (proxy)
-   * The basic auth header, username & password is never exposted to browser/Frontend
+   * The basic auth header, username & password is never exposed to browser/Frontend
    * so this will be empty then.
    */
   basicAuth?: string;

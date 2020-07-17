@@ -1,10 +1,12 @@
 package cloudwatch
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
@@ -34,7 +36,7 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 
 	// Maintaining a list of field names in the order returned from CloudWatch
 	// as just iterating over fieldValues would not give a consistent order
-	fieldNames := make([]*string, 0)
+	fieldNames := make([]string, 0)
 
 	for i, row := range nonEmptyRows {
 		for _, resultField := range row {
@@ -44,7 +46,7 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 			}
 
 			if _, exists := fieldValues[*resultField.Field]; !exists {
-				fieldNames = append(fieldNames, resultField.Field)
+				fieldNames = append(fieldNames, *resultField.Field)
 
 				// Check if field is time field
 				if _, err := time.Parse(cloudWatchTSFormat, *resultField.Value); err == nil {
@@ -77,11 +79,11 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 
 	newFields := make([]*data.Field, 0)
 	for _, fieldName := range fieldNames {
-		newFields = append(newFields, data.NewField(*fieldName, nil, fieldValues[*fieldName]))
+		newFields = append(newFields, data.NewField(fieldName, nil, fieldValues[fieldName]))
 
-		if *fieldName == "@timestamp" {
-			newFields[len(newFields)-1].SetConfig(&data.FieldConfig{Title: "Time"})
-		} else if *fieldName == LOGSTREAM_IDENTIFIER_INTERNAL || *fieldName == LOG_IDENTIFIER_INTERNAL {
+		if fieldName == "@timestamp" {
+			newFields[len(newFields)-1].SetConfig(&data.FieldConfig{DisplayName: "Time"})
+		} else if fieldName == logStreamIdentifierInternal || fieldName == logIdentifierInternal {
 			newFields[len(newFields)-1].SetConfig(
 				&data.FieldConfig{
 					Custom: map[string]interface{}{
@@ -108,9 +110,19 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 func groupResults(results *data.Frame, groupingFieldNames []string) ([]*data.Frame, error) {
 	groupingFields := make([]*data.Field, 0)
 
-	for _, field := range results.Fields {
+	for i, field := range results.Fields {
 		for _, groupingField := range groupingFieldNames {
 			if field.Name == groupingField {
+				// convert numeric grouping field to string field
+				if field.Type().Numeric() {
+					newField, err := numericFieldToStringField(field)
+					if err != nil {
+						return nil, err
+					}
+					results.Fields[i] = newField
+					field = newField
+				}
+
 				groupingFields = append(groupingFields, field)
 			}
 		}
@@ -152,4 +164,26 @@ func generateGroupKey(fields []*data.Field, row int) string {
 	}
 
 	return groupKey
+}
+
+func numericFieldToStringField(field *data.Field) (*data.Field, error) {
+	if !field.Type().Numeric() {
+		return nil, fmt.Errorf("field is not numeric")
+	}
+
+	strings := make([]*string, field.Len())
+	for i := 0; i < field.Len(); i++ {
+		floatVal, err := field.FloatAt(i)
+		if err != nil {
+			return nil, err
+		}
+
+		strVal := fmt.Sprintf("%g", floatVal)
+		strings[i] = aws.String(strVal)
+	}
+
+	newField := data.NewField(field.Name, field.Labels, strings)
+	newField.Config = field.Config
+
+	return newField, nil
 }
