@@ -18,6 +18,7 @@ type vector interface {
 	ConcreteAt(i int) (val interface{}, ok bool)
 	SetConcrete(i int, val interface{})
 	Insert(i int, val interface{})
+	Delete(i int)
 }
 
 func newVector(t interface{}, n int) (v vector) {
@@ -68,7 +69,6 @@ func newVector(t interface{}, n int) (v vector) {
 	case []*float64:
 		v = newNullableFloat64Vector(n)
 
-	// string, bool
 	case []string:
 		v = newStringVector(n)
 	case []*string:
@@ -77,20 +77,14 @@ func newVector(t interface{}, n int) (v vector) {
 		v = newBoolVector(n)
 	case []*bool:
 		v = newNullableBoolVector(n)
-
-	// time
 	case []time.Time:
 		v = newTimeTimeVector(n)
 	case []*time.Time:
 		v = newNullableTimeTimeVector(n)
-	case []time.Duration:
-		v = newTimeDurationVector(n)
-	case []*time.Duration:
-		v = newNullableTimeDurationVector(n)
 	default:
-		panic(fmt.Sprintf("unsupported field type of %T", t))
+		panic(fmt.Sprintf("unsupported vector type of %T", t))
 	}
-	return
+	return v
 }
 
 // ValidFieldType returns if a primitive slice is a valid supported Field type.
@@ -153,10 +147,6 @@ func ValidFieldType(t interface{}) bool {
 	case []time.Time:
 		return true
 	case []*time.Time:
-		return true
-	case []time.Duration:
-		return true
-	case []*time.Duration:
 		return true
 	default:
 		return false
@@ -231,11 +221,6 @@ const (
 	FieldTypeTime
 	// FieldTypeNullableTime indicates the underlying primitive is a []*time.Time.
 	FieldTypeNullableTime
-
-	// FieldTypeDuration indicates the underlying primitive is a []time.Duration.
-	FieldTypeDuration
-	// FieldTypeNullableDuration indicates the underlying primitive is a []*time.Duration.
-	FieldTypeNullableDuration
 )
 
 func vectorFieldType(v vector) FieldType {
@@ -304,11 +289,6 @@ func vectorFieldType(v vector) FieldType {
 		return FieldTypeTime
 	case *nullableTimeTimeVector:
 		return FieldTypeNullableTime
-
-	case *timeDurationVector:
-		return FieldTypeDuration
-	case *nullableTimeDurationVector:
-		return FieldTypeNullableDuration
 	}
 
 	return FieldType(-1)
@@ -319,7 +299,6 @@ func (p FieldType) String() string {
 		return "invalid/unsupported"
 	}
 	return fmt.Sprintf("[]%v", p.ItemTypeString())
-
 }
 
 // NewFieldFromFieldType creates a new Field of the given FieldType of length n.
@@ -394,12 +373,6 @@ func NewFieldFromFieldType(p FieldType, n int) *Field {
 		f.vector = newTimeTimeVector(n)
 	case FieldTypeNullableTime:
 		f.vector = newNullableTimeTimeVector(n)
-
-	case FieldTypeDuration:
-		f.vector = newTimeDurationVector(n)
-	case FieldTypeNullableDuration:
-		f.vector = newNullableTimeDurationVector(n)
-
 	default:
 		panic("unsupported FieldType")
 	}
@@ -451,11 +424,8 @@ func (p FieldType) NullableType() FieldType {
 
 	case FieldTypeTime, FieldTypeNullableTime:
 		return FieldTypeNullableTime
-
-	case FieldTypeDuration, FieldTypeNullableDuration:
-		return FieldTypeDuration
 	default:
-		panic(fmt.Sprintf("unsupported field type: %+v", p))
+		panic(fmt.Sprintf("unsupported vector ptype: %+v", p))
 	}
 }
 
@@ -526,13 +496,7 @@ func (p FieldType) ItemTypeString() string {
 		return "time.Time"
 	case FieldTypeNullableTime:
 		return "*time.Time"
-
-	case FieldTypeDuration:
-		return "time.Duration"
-	case FieldTypeNullableDuration:
-		return "*time.Duration"
 	}
-
 	return "invalid/unsupported type"
 }
 
@@ -556,15 +520,11 @@ func (p FieldType) Nullable() bool {
 
 	case FieldTypeNullableTime:
 		return true
-
-	case FieldTypeNullableDuration:
-		return true
 	}
-
 	return false
 }
 
-// Numeric returns if Field type is a nullable type
+// Numeric returns if Field type is a nullable type.
 func (p FieldType) Numeric() bool {
 	switch p {
 	case FieldTypeInt8, FieldTypeInt16, FieldTypeInt32, FieldTypeInt64:
@@ -583,6 +543,11 @@ func (p FieldType) Numeric() bool {
 		return true
 	}
 	return false
+}
+
+// Time returns if Field type is a time type (FieldTypeTime or FieldTypeNullableTime).
+func (p FieldType) Time() bool {
+	return p == FieldTypeTime || p == FieldTypeNullableTime
 }
 
 // numericFieldTypes is an array of FieldTypes that are numeric.

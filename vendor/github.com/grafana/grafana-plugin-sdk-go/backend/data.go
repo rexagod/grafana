@@ -11,7 +11,7 @@ import (
 // QueryDataHandler handles data queries.
 type QueryDataHandler interface {
 	// QueryData handles multiple queries and returns multiple responses.
-	// req contains the queries []DataQuery (where each query contains RefID as a unique identifer).
+	// req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
 	// The QueryDataResponse contains a map of RefID to the response for each query, and each response
 	// contains Frames ([]*Frame).
 	//
@@ -19,6 +19,17 @@ type QueryDataHandler interface {
 	// the RefID in QueryDataResponse.Responses map. This is done before the QueryDataResponse is
 	// sent to Grafana. Therefore one does not need to be set that property on frames when using this method.
 	QueryData(ctx context.Context, req *QueryDataRequest) (*QueryDataResponse, error)
+}
+
+// QueryDataHandlerFunc is an adapter to allow the use of
+// ordinary functions as backend.QueryDataHandler. If f is a function
+// with the appropriate signature, QueryDataHandlerFunc(f) is a
+// Handler that calls f.
+type QueryDataHandlerFunc func(ctx context.Context, req *QueryDataRequest) (*QueryDataResponse, error)
+
+// QueryData calls fn(ctx, req).
+func (fn QueryDataHandlerFunc) QueryData(ctx context.Context, req *QueryDataRequest) (*QueryDataResponse, error) {
+	return fn(ctx, req)
 }
 
 // QueryDataRequest contains a single request which contains multiple queries.
@@ -32,7 +43,7 @@ type QueryDataRequest struct {
 // DataQuery represents a single query as sent from the frontend.
 // A slice of DataQuery makes up the Queries property of a QueryDataRequest.
 type DataQuery struct {
-	// RefID is the unique identifer of the query, set by the frontend call.
+	// RefID is the unique identifier of the query, set by the frontend call.
 	RefID string
 
 	// QueryType is an optional identifier for the type of query.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/apache/arrow/go/arrow"
 	"github.com/apache/arrow/go/arrow/array"
+	"github.com/apache/arrow/go/arrow/arrio"
 	"github.com/apache/arrow/go/arrow/ipc"
 	"github.com/apache/arrow/go/arrow/memory"
 	"github.com/mattetti/filebuffer"
@@ -15,7 +16,12 @@ import (
 
 // MarshalArrow converts the Frame to an arrow table and returns a byte
 // representation of that table.
+// All fields of a Frame must be of the same length or an error is returned.
 func (f *Frame) MarshalArrow() ([]byte, error) {
+	if _, err := f.RowLen(); err != nil {
+		return nil, err
+	}
+
 	arrowFields, err := buildArrowFields(f)
 	if err != nil {
 		return nil, err
@@ -114,7 +120,6 @@ func buildArrowColumns(f *Frame, arrowFields []arrow.Field) ([]array.Column, err
 
 	for fieldIdx, field := range f.Fields {
 		switch v := field.vector.(type) {
-
 		case *int8Vector:
 			columns[fieldIdx] = *buildInt8Column(pool, arrowFields[fieldIdx], v)
 		case *nullableInt8Vector:
@@ -180,11 +185,6 @@ func buildArrowColumns(f *Frame, arrowFields []arrow.Field) ([]array.Column, err
 		case *nullableTimeTimeVector:
 			columns[fieldIdx] = *buildNullableTimeColumn(pool, arrowFields[fieldIdx], v)
 
-		case *timeDurationVector:
-			columns[fieldIdx] = *buildDurationColumn(pool, arrowFields[fieldIdx], v)
-		case *nullableTimeDurationVector:
-			columns[fieldIdx] = *buildNullableDurationColumn(pool, arrowFields[fieldIdx], v)
-
 		default:
 			return nil, fmt.Errorf("unsupported field vector type for conversion to arrow: %T", v)
 		}
@@ -214,7 +214,6 @@ func buildArrowSchema(f *Frame, fs []arrow.Field) (*arrow.Schema, error) {
 // Vector primitives.
 func fieldToArrow(f *Field) (arrow.DataType, bool, error) {
 	switch f.vector.(type) {
-
 	case *stringVector:
 		return &arrow.StringType{}, false, nil
 	case *nullableStringVector:
@@ -281,11 +280,6 @@ func fieldToArrow(f *Field) (arrow.DataType, bool, error) {
 		return &arrow.TimestampType{}, false, nil
 	case *nullableTimeTimeVector:
 		return &arrow.TimestampType{}, true, nil
-
-	case *timeDurationVector:
-		return &arrow.DurationType{}, false, nil
-	case *nullableTimeDurationVector:
-		return &arrow.DurationType{}, true, nil
 
 	default:
 		return nil, false, fmt.Errorf("unsupported type for conversion to arrow: %T", f.vector)
@@ -396,12 +390,6 @@ func initializeFrameFields(schema *arrow.Schema, frame *Frame) ([]bool, error) {
 				break
 			}
 			sdkField.vector = newTimeTimeVector(0)
-		case arrow.DURATION:
-			if nullable[idx] {
-				sdkField.vector = newNullableTimeDurationVector(0)
-				break
-			}
-			sdkField.vector = newTimeDurationVector(0)
 		default:
 			return nullable, fmt.Errorf("unsupported conversion from arrow to sdk type for arrow type %v", field.Type.ID().String())
 		}
@@ -411,7 +399,7 @@ func initializeFrameFields(schema *arrow.Schema, frame *Frame) ([]bool, error) {
 	return nullable, nil
 }
 
-func populateFrameFields(fR *ipc.FileReader, nullable []bool, frame *Frame) error {
+func populateFrameFields(fR arrio.Reader, nullable []bool, frame *Frame) error {
 	for {
 		record, err := fR.Read()
 		if err == io.EOF {
@@ -617,21 +605,6 @@ func populateFrameFields(fR *ipc.FileReader, nullable []bool, frame *Frame) erro
 						continue
 					}
 					frame.Fields[i].vector.Append(t)
-				}
-			case arrow.DURATION:
-				v := array.NewDurationData(col.Data())
-				for vIdx, durNano := range v.DurationValues() {
-					dur := time.Duration(durNano) // nanosecond assumption (again)
-					if nullable[i] {
-						if v.IsNull(vIdx) {
-							var nDur *time.Duration
-							frame.Fields[i].vector.Append(nDur)
-							continue
-						}
-						frame.Fields[i].vector.Append(&dur)
-						continue
-					}
-					frame.Fields[i].vector.Append(dur)
 				}
 			default:
 				return fmt.Errorf("unsupported arrow type %s for conversion", col.DataType().ID())

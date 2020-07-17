@@ -13,8 +13,8 @@ type FieldConfig struct {
 	// https://github.com/grafana/grafana/blob/master/packages/grafana-data/src/types/dataFrame.ts#L23
 	// All properties are optional should be omitted from JSON when empty or not set.
 
-	Title      string `json:"title,omitempty"`
-	Filterable *bool  `json:"filterable,omitempty"` // indicates if the Field's data can be filtered by additional calls.
+	DisplayName string `json:"displayName,omitempty"`
+	Filterable  *bool  `json:"filterable,omitempty"` // indicates if the Field's data can be filtered by additional calls.
 
 	// Numeric Options
 	Unit     string       `json:"unit,omitempty"`     // is the string to display to represent the Field's unit, such as "Requests/sec"
@@ -52,7 +52,7 @@ type ConfFloat64 float64
 // MarshalJSON fullfills the json.Marshaler interface.
 func (sf *ConfFloat64) MarshalJSON() ([]byte, error) {
 	if sf == nil || math.IsNaN(float64(*sf)) || math.IsInf(float64(*sf), -1) || math.IsInf(float64(*sf), 1) {
-		return []byte("null"), nil
+		return []byte(string(NullValueModeNull)), nil
 	}
 
 	return []byte(fmt.Sprintf(`%v`, float64(*sf))), nil
@@ -61,7 +61,7 @@ func (sf *ConfFloat64) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON fullfills the json.Unmarshaler interface.
 func (sf *ConfFloat64) UnmarshalJSON(data []byte) error {
 	s := string(data)
-	if s == "null" {
+	if s == string(NullValueModeNull) {
 		return nil
 	}
 	v, err := strconv.ParseFloat(s, 64)
@@ -74,7 +74,7 @@ func (sf *ConfFloat64) UnmarshalJSON(data []byte) error {
 }
 
 // SetDecimals modifies the FieldConfig's Decimals property to
-// be set to v and returns the FieldConfig. It is a convenance function
+// be set to v and returns the FieldConfig. It is a convenience function
 // since the Decimals property is a pointer.
 func (fc *FieldConfig) SetDecimals(v uint16) *FieldConfig {
 	fc.Decimals = &v
@@ -82,7 +82,7 @@ func (fc *FieldConfig) SetDecimals(v uint16) *FieldConfig {
 }
 
 // SetMin modifies the FieldConfig's Min property to
-// be set to v and returns the FieldConfig. It is a convenance function
+// be set to v and returns the FieldConfig. It is a convenience function
 // since the Min property is a pointer.
 func (fc *FieldConfig) SetMin(v float64) *FieldConfig {
 	cf := ConfFloat64(v)
@@ -91,7 +91,7 @@ func (fc *FieldConfig) SetMin(v float64) *FieldConfig {
 }
 
 // SetMax modifies the FieldConfig's Max property to
-// be set to v and returns the FieldConfig. It is a convenance function
+// be set to v and returns the FieldConfig. It is a convenience function
 // since the Min property is a pointer.
 func (fc *FieldConfig) SetMax(v float64) *FieldConfig {
 	cf := ConfFloat64(v)
@@ -100,7 +100,7 @@ func (fc *FieldConfig) SetMax(v float64) *FieldConfig {
 }
 
 // SetFilterable modifies the FieldConfig's Filterable property to
-// be set to b and returns the FieldConfig. It is a convenance function
+// be set to b and returns the FieldConfig. It is a convenience function
 // since the Filterable property is a pointer.
 func (fc *FieldConfig) SetFilterable(b bool) *FieldConfig {
 	fc.Filterable = &b
@@ -146,7 +146,7 @@ type ValueMapping struct {
 }
 
 // DataLink define what
-type DataLink struct {
+type DataLink struct { //revive:disable-line
 	Title       string `json:"title,omitempty"`
 	TargetBlank bool   `json:"targetBlank,omitempty"`
 	URL         string `json:"url,omitempty"`
