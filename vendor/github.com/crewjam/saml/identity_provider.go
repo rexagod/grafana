@@ -101,16 +101,24 @@ type IdentityProvider struct {
 	SessionProvider         SessionProvider
 	AssertionMaker          AssertionMaker
 	SignatureMethod         string
+	ValidDuration           *time.Duration
 }
 
 // Metadata returns the metadata structure for this identity provider.
 func (idp *IdentityProvider) Metadata() *EntityDescriptor {
 	certStr := base64.StdEncoding.EncodeToString(idp.Certificate.Raw)
 
+	var validDuration time.Duration
+	if idp.ValidDuration != nil {
+		validDuration = *idp.ValidDuration
+	} else {
+		validDuration = DefaultValidDuration
+	}
+
 	ed := &EntityDescriptor{
 		EntityID:      idp.MetadataURL.String(),
-		ValidUntil:    TimeNow().Add(DefaultValidDuration),
-		CacheDuration: DefaultValidDuration,
+		ValidUntil:    TimeNow().Add(validDuration),
+		CacheDuration: validDuration,
 		IDPSSODescriptors: []IDPSSODescriptor{
 			{
 				SSODescriptor: SSODescriptor{
@@ -372,7 +380,7 @@ func (req *IdpAuthnRequest) Validate() error {
 	// For now we do the safe thing and fail in the case where we think
 	// requests might be signed.
 	if idpSsoDescriptor.WantAuthnRequestsSigned != nil && *idpSsoDescriptor.WantAuthnRequestsSigned {
-		return fmt.Errorf("Authn request signature checking is not currently supported")
+		return fmt.Errorf("authn request signature checking is not currently supported")
 	}
 
 	// In http://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf §3.4.5.2
