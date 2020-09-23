@@ -37,6 +37,12 @@ Resolve conflicts by taking everything from upstream except for:
 * `.gitignore` (`/public/build`, `/public/views/error.html` and `/public/views/index.html` shouldn't be ignored).
 * `.dockerignore`
 
+Vendor dependencies:
+
+```
+go mod vendor
+```
+
 Rebuild the Javascript assets:
 
 ```
@@ -49,8 +55,6 @@ Once the front-end build is complete, the files in `public/build` and `public/vi
 must be committed to the git.  The reason for this is that the front-end build
 requires several dependencies that are not currently packaged for OpenShift.
 
-
-
 ## Tips and tricks
 
 Check the differences between the upstream and downstream versions:
@@ -62,7 +66,7 @@ git diff --patch-with-stat ${VERSION}
 The only differences should be:
 * `.gitignore`
 * `.dockerignore`
-* Added files specific to OCP (`Dockerfile.ocp`, `OWNERS`, this README file, `public/build` and `public/views`)
+* Added files specific to OCP (`Dockerfile.ocp`, `OWNERS`, this README file, `public/build`, `public/views` and `vendor`)
 
 If `make build-js` fails, verify that you don't have left-over files from a
 previous version in the `public/app` directory.
