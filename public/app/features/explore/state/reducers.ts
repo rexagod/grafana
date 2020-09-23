@@ -3,7 +3,6 @@ import { AnyAction } from 'redux';
 import { PayloadAction } from '@reduxjs/toolkit';
 import {
   DataQuery,
-  DataQueryRequest,
   DataSourceApi,
   DefaultTimeRange,
   LoadingState,
@@ -13,6 +12,8 @@ import {
   toLegacyResponseData,
   ExploreMode,
   LogsDedupStrategy,
+  sortLogsResult,
+  DataQueryErrorType,
 } from '@grafana/data';
 import { RefreshPicker } from '@grafana/ui';
 import { LocationUpdate } from '@grafana/runtime';
@@ -24,7 +25,6 @@ import {
   getQueryKeys,
   parseUrlState,
   refreshIntervalToSortOrder,
-  sortLogsResult,
   stopQueryState,
 } from 'app/core/utils/explore';
 import { ExploreId, ExploreItemState, ExploreState, ExploreUpdateState } from 'app/types/explore';
@@ -100,11 +100,11 @@ export const makeExploreItemState = (): ExploreItemState => ({
     from: null,
     to: null,
     raw: DEFAULT_RANGE,
-  },
+  } as any,
   absoluteRange: {
     from: null,
     to: null,
-  },
+  } as any,
   scanning: false,
   showingGraph: true,
   showingTable: true,
@@ -127,9 +127,7 @@ export const makeExploreItemState = (): ExploreItemState => ({
 
 export const createEmptyQueryResponse = (): PanelData => ({
   state: LoadingState.NotStarted,
-  request: {} as DataQueryRequest<DataQuery>,
   series: [],
-  error: null,
   timeRange: DefaultTimeRange,
 });
 
@@ -368,13 +366,14 @@ export const itemReducer = (state: ExploreItemState = makeExploreItemState(), ac
     const queriesAfterRemoval: DataQuery[] = [...queries.slice(0, index), ...queries.slice(index + 1)].map(query => {
       return { ...query, refId: '' };
     });
+
     const nextQueries: DataQuery[] = [];
 
     queriesAfterRemoval.forEach((query, i) => {
       nextQueries.push(generateNewKeyAndAddRefIdIfMissing(query, nextQueries, i));
     });
 
-    const nextQueryKeys: string[] = nextQueries.map(query => query.key);
+    const nextQueryKeys: string[] = nextQueries.map(query => query.key!);
 
     return {
       ...state,
@@ -512,7 +511,13 @@ export const processQueryResponse = (
   const { request, state: loadingState, series, error } = response;
 
   if (error) {
-    if (error.cancelled) {
+    if (error.type === DataQueryErrorType.Timeout) {
+      return {
+        ...state,
+        queryResponse: response,
+        loading: loadingState === LoadingState.Loading || loadingState === LoadingState.Streaming,
+      };
+    } else if (error.type === DataQueryErrorType.Cancelled) {
       return state;
     }
 
@@ -530,6 +535,10 @@ export const processQueryResponse = (
     };
   }
 
+  if (!request) {
+    return { ...state };
+  }
+
   const latency = request.endTime ? request.endTime - request.startTime : 0;
   const processor = new ResultProcessor(state, series, request.intervalMs, request.timezone as TimeZone);
   const graphResult = processor.getGraphResult();
@@ -537,7 +546,7 @@ export const processQueryResponse = (
   const logsResult = processor.getLogsResult();
 
   // Send legacy data to Angular editors
-  if (state.datasourceInstance.components.QueryCtrl) {
+  if (state.datasourceInstance?.components?.QueryCtrl) {
     const legacy = series.map(v => toLegacyResponseData(v));
 
     state.eventBridge.emit(PanelEvents.dataReceived, legacy);
@@ -565,6 +574,10 @@ export const updateChildRefreshState = (
   exploreId: ExploreId
 ): ExploreItemState => {
   const path = payload.path || '';
+  if (!payload.query) {
+    return state;
+  }
+
   const queryState = payload.query[exploreId] as string;
   if (!queryState) {
     return state;

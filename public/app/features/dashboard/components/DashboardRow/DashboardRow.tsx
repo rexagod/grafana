@@ -40,7 +40,7 @@ export class DashboardRow extends React.Component<DashboardRowProps, any> {
     });
   };
 
-  onUpdate = (title: string | null, repeat: string | null) => {
+  onUpdate = (title: string, repeat: string | undefined) => {
     this.props.panel['title'] = title;
     this.props.panel['repeat'] = repeat;
     this.props.panel.render();
@@ -69,7 +69,7 @@ export class DashboardRow extends React.Component<DashboardRowProps, any> {
       'dashboard-row--collapsed': this.state.collapsed,
     });
 
-    const title = templateSrv.replaceWithText(this.props.panel.title, this.props.panel.scopedVars);
+    const title = templateSrv.replace(this.props.panel.title, this.props.panel.scopedVars, 'text');
     const count = this.props.panel.panels ? this.props.panel.panels.length : 0;
     const panels = count === 1 ? 'panel' : 'panels';
     const canEdit = this.props.dashboard.meta.canEdit === true;

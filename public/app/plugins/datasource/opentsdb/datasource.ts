@@ -1,6 +1,6 @@
 import angular from 'angular';
 import _ from 'lodash';
-import { dateMath, DataQueryRequest, DataSourceApi } from '@grafana/data';
+import { dateMath, DataQueryRequest, DataSourceApi, ScopedVars } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
 import { TemplateSrv } from 'app/features/templating/template_srv';
 import { OpenTsdbOptions, OpenTsdbQuery } from './types';
@@ -39,8 +39,8 @@ export default class OpenTsDatasource extends DataSourceApi<OpenTsdbQuery, OpenT
 
   // Called once per panel (graph)
   query(options: DataQueryRequest<OpenTsdbQuery>) {
-    const start = this.convertToTSDBTime(options.rangeRaw.from, false, options.timezone);
-    const end = this.convertToTSDBTime(options.rangeRaw.to, true, options.timezone);
+    const start = this.convertToTSDBTime(options.range.raw.from, false, options.timezone);
+    const end = this.convertToTSDBTime(options.range.raw.to, true, options.timezone);
     const qs: any[] = [];
 
     _.each(options.targets, target => {
@@ -491,6 +491,17 @@ export default class OpenTsDatasource extends DataSourceApi<OpenTsdbQuery, OpenT
         });
       }
     });
+  }
+
+  interpolateVariablesInQueries(queries: OpenTsdbQuery[], scopedVars: ScopedVars): OpenTsdbQuery[] {
+    if (!queries.length) {
+      return queries;
+    }
+
+    return queries.map(query => ({
+      ...query,
+      metric: this.templateSrv.replace(query.metric, scopedVars),
+    }));
   }
 
   convertToTSDBTime(date: any, roundUp: any, timezone: any) {

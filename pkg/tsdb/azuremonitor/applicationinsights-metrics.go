@@ -107,6 +107,10 @@ func InsightsMetricsResultToFrame(mr MetricsResult, metric, agg string, dimensio
 		rowCounter++
 	}
 
+	if len(frame.Fields) == 1 { // No data, only a time column, no sort
+		return frame, nil
+	}
+
 	if err := data.SortWideFrameFields(frame, dimensions...); err != nil {
 		return nil, err
 	}
@@ -129,7 +133,6 @@ func valFromLeafAP(ap map[string]interface{}, metric, agg string) (*float64, err
 	metMap, ok := met.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("unexpected type for additional properties not found in leaf segment, want map[string]interface{}, but got %T", met)
-
 	}
 	metVal, ok := metMap[agg]
 	if !ok {
