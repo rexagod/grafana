@@ -1,5 +1,5 @@
 import React from 'react';
-import renderer from 'react-test-renderer';
+import { render, screen } from '@testing-library/react';
 import { shallow } from 'enzyme';
 import { Segment } from '@grafana/ui';
 import { Aggregations, Props } from './Aggregations';
@@ -13,7 +13,7 @@ const props: Props = {
   metricDescriptor: {
     valueType: '',
     metricKind: '',
-  },
+  } as any,
   crossSeriesReducer: '',
   groupBys: [],
   children: renderProps => <div />,
@@ -22,8 +22,8 @@ const props: Props = {
 
 describe('Aggregations', () => {
   it('renders correctly', () => {
-    const tree = renderer.create(<Aggregations {...props} />).toJSON();
-    expect(tree).toMatchSnapshot();
+    render(<Aggregations {...props} />);
+    expect(screen.getByTestId('aggregations')).toBeInTheDocument();
   });
 
   describe('options', () => {
@@ -33,7 +33,7 @@ describe('Aggregations', () => {
         metricDescriptor: {
           valueType: ValueTypes.DOUBLE,
           metricKind: MetricKind.GAUGE,
-        },
+        } as any,
       };
 
       it('should not have the reduce values', () => {
@@ -54,7 +54,7 @@ describe('Aggregations', () => {
         metricDescriptor: {
           valueType: ValueTypes.MONEY,
           metricKind: MetricKind.CUMULATIVE,
-        },
+        } as any,
       };
 
       it('should have the reduce values', () => {

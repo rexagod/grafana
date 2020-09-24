@@ -9,7 +9,7 @@ import { AppEvents, AppPlugin, AppPluginMeta, NavModel, PluginType, UrlQueryMap 
 import Page from 'app/core/components/Page/Page';
 import { getPluginSettings } from './PluginSettingsCache';
 import { importAppPlugin } from './plugin_loader';
-import { getNotFoundNav, getWarningNav } from 'app/core/nav_model_srv';
+import { getNotFoundNav, getWarningNav, getExceptionNav } from 'app/core/nav_model_srv';
 import { appEvents } from 'app/core/core';
 import PageLoader from 'app/core/components/PageLoader/PageLoader';
 
@@ -22,7 +22,7 @@ interface Props {
 
 interface State {
   loading: boolean;
-  plugin?: AppPlugin;
+  plugin?: AppPlugin | null;
   nav?: NavModel;
 }
 
@@ -62,7 +62,11 @@ class AppRootPage extends Component<Props, State> {
       });
       this.setState({ plugin: app, loading: false });
     } catch (err) {
-      this.setState({ plugin: null, loading: false, nav: getNotFoundNav() });
+      this.setState({
+        plugin: null,
+        loading: false,
+        nav: process.env.NODE_ENV === 'development' ? getExceptionNav(err) : getNotFoundNav(),
+      });
     }
   }
 
@@ -90,7 +94,7 @@ class AppRootPage extends Component<Props, State> {
     return (
       <Page navModel={nav}>
         <Page.Contents isLoading={loading}>
-          {!loading && plugin && (
+          {plugin && plugin.root && (
             <plugin.root meta={plugin.meta} query={query} path={path} onNavChanged={this.onNavChanged} />
           )}
         </Page.Contents>

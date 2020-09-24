@@ -57,7 +57,7 @@ export interface InitializeExplorePayload {
   queries: DataQuery[];
   range: TimeRange;
   ui: ExploreUIState;
-  originPanelId: number;
+  originPanelId?: number | null;
 }
 
 export interface LoadDatasourceMissingPayload {

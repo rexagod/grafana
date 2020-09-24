@@ -1,4 +1,5 @@
 # SAML
+
 [![](https://godoc.org/github.com/crewjam/saml?status.svg)](http://godoc.org/github.com/crewjam/saml)
 
 [![Build Status](https://travis-ci.org/crewjam/saml.svg?branch=master)](https://travis-ci.org/crewjam/saml)
@@ -12,30 +13,35 @@ In SAML parlance an **Identity Provider** (IDP) is a service that knows how to a
 
 The core package contains the implementation of SAML. The package samlsp provides helper middleware suitable for use in Service Provider applications. The package samlidp provides a rudimentary IDP service that is useful for testing or as a starting point for other integrations.
 
-## Breaking Changes 
+## Breaking Changes
 
-Note: between version 0.2.0 and the current master include changes to the API
-that will break your existing code a little.
+**Version 0.4.0** introduces a few breaking changes to the _samlsp_ package in order to make the package more extensible, and to clean up the interfaces a bit. The default behavior remains the same, but you can now provide interface implementations of _RequestTracker_ (which tracks pending requests), _Session_ (which handles maintaining a session) and _OnError_ which handles reporting errors.
 
-This change turned some fields from pointers to a single optional struct into
-the more correct slice of struct, and to pluralize the field name. For example,
-`IDPSSODescriptor *IDPSSODescriptor` has become 
-`IDPSSODescriptors []IDPSSODescriptor`. This more accurately reflects the 
-standard.
+Public fields of _samlsp.Middleware_ have changed, so some usages may require adjustment. See [issue 231](https://github.com/crewjam/saml/issues/231) for details.
 
-The struct `Metadata` has been renamed to `EntityDescriptor`. In 0.2.0 and before, 
-every struct derived from the standard has the same name as in the standard, 
-*except* for `Metadata` which should always have been called `EntityDescriptor`. 
+The option to provide an IDP metadata **URL** has been deprecated. Instead, we recommend that you use the `FetchMetadata()` function, or fetch the metadata yourself and use the new `ParseMetadata()` function, and pass the metadata in _samlsp.Options.IDPMetadata_.
 
-In various places `url.URL` is now used where `string` was used <= version 0.1.0.
+Similarly, the _HTTPClient_ field is now deprecated because it was only used for fetching metdata, which is no longer directly implemented.
 
-In various places where keys and certificates were modeled as `string` 
-<= version 0.1.0 (what was I thinking?!) they are now modeled as 
-`*rsa.PrivateKey`, `*x509.Certificate`, or `crypto.PrivateKey` as appropriate.
+The fields that manage how cookies are set are deprecated as well. To customize how cookies are managed, provide custom implementation of _RequestTracker_ and/or _Session_, perhaps by extending the default implementations.
+
+The deprecated fields have not been removed from the Options structure, but will be in future.
+
+In particular we have deprecated the following fields in
+_samlsp.Options_:
+
+- `Logger` - This was used to emit errors while validating, which is an anti-pattern.
+- `IDPMetadataURL` - Instead use `FetchMetadata()`
+- `HTTPClient` - Instead pass httpClient to FetchMetadata
+- `CookieMaxAge` - Instead assign a custom CookieRequestTracker or CookieSessionProvider
+- `CookieName` - Instead assign a custom CookieRequestTracker or CookieSessionProvider
+- `CookieDomain` - Instead assign a custom CookieRequestTracker or CookieSessionProvider
+- `CookieDomain` - Instead assign a custom CookieRequestTracker or CookieSessionProvider
 
 ## Getting Started as a Service Provider
 
 Let us assume we have a simple web application to protect. We'll modify this application so it uses SAML to authenticate users.
+
 ```golang
 package main
 
@@ -54,6 +60,7 @@ func main() {
     http.ListenAndServe(":8000", nil)
 }
 ```
+
 Each service provider must have an self-signed X.509 key pair established. You can generate your own with something like this:
 
     openssl req -x509 -newkey rsa:2048 -keyout myservice.key -out myservice.cert -days 365 -nodes -subj "/CN=myservice.example.com"
@@ -75,7 +82,7 @@ import (
 )
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %s!", samlsp.Token(r.Context()).Attributes.Get("cn"))
+	fmt.Fprintf(w, "Hello, %s!", samlsp.AttributeFromContext(r.Context(), "cn"))
 }
 
 func main() {
@@ -142,13 +149,13 @@ The SAML standard is huge and complex with many dark corners and strange, unused
 
 This package supports the **Web SSO** profile. Message flows from the service provider to the IDP are supported using the **HTTP Redirect** binding and the **HTTP POST** binding. Message flows from the IDP to the service provider are supported via the **HTTP POST** binding.
 
-The package supports signed and encrypted SAML assertions. It does not support signed or encrypted requests.
+The package can produce signed SAML assertions, and can validate both signed and encrypted SAML assertions. It does not support signed or encrypted requests.
 
 ## RelayState
 
-The *RelayState* parameter allows you to pass user state information across the authentication flow. The most common use for this is to allow a user to request a deep link into your site, be redirected through the SAML login flow, and upon successful completion, be directed to the originally requested link, rather than the root.
+The _RelayState_ parameter allows you to pass user state information across the authentication flow. The most common use for this is to allow a user to request a deep link into your site, be redirected through the SAML login flow, and upon successful completion, be directed to the originally requested link, rather than the root.
 
-Unfortunately, *RelayState* is less useful than it could be. Firstly, it is **not** authenticated, so anything you supply must be signed to avoid XSS or CSRF. Secondly, it is limited to 80 bytes in length, which precludes signing. (See section 3.6.3.1 of SAMLProfiles.)
+Unfortunately, _RelayState_ is less useful than it could be. Firstly, it is **not** authenticated, so anything you supply must be signed to avoid XSS or CSRF. Secondly, it is limited to 80 bytes in length, which precludes signing. (See section 3.6.3.1 of SAMLProfiles.)
 
 ## References
 
@@ -166,4 +173,4 @@ The SAML specification is a collection of PDFs (sadly):
 
 ## Security Issues
 
-Please do not report security issues in the issue tracker. Rather, please contact me directly at ross@kndr.org ([PGP Key `78B6038B3B9DFB88`](https://keybase.io/crewjam)).
+Please do not report security issues in the issue tracker. Rather, please contact me directly at ross@kndr.org ([PGP Key `78B6038B3B9DFB88`](https://keybase.io/crewjam)). If your issue is *not* a security issue, please use the issue tracker so other contributors can help.
