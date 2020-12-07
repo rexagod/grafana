@@ -97,7 +97,7 @@ func (ss *SqlStore) GetAlertNotificationUidWithId(query *models.GetAlertNotifica
 		return err
 	}
 
-	ss.CacheService.Set(cacheKey, query.Result, -1) //Infinite, never changes
+	ss.CacheService.Set(cacheKey, query.Result, -1) // Infinite, never changes
 
 	return nil
 }
@@ -185,7 +185,7 @@ func getAlertNotificationUidInternal(query *models.GetAlertNotificationUidQuery,
 	}
 
 	if len(results) == 0 {
-		return fmt.Errorf("Alert notification [ Id: %v, OrgId: %v ] not found", query.Id, query.OrgId)
+		return models.ErrAlertNotificationFailedTranslateUniqueID
 	}
 
 	query.Result = results[0]

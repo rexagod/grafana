@@ -15,6 +15,8 @@ import (
 type Options struct {
 	// HTTP client. Default is http.DefaultClient.
 	httpClient *http.Client
+	// Flag whether http client was created internally
+	ownClient bool
 	// TLS configuration for secure connection. Default nil
 	tlsConfig *tls.Config
 	// HTTP request timeout in sec. Default 20
@@ -37,6 +39,7 @@ func (o *Options) HTTPClient() *http.Client {
 				TLSClientConfig:     o.TLSConfig(),
 			},
 		}
+		o.ownClient = true
 	}
 	return o.httpClient
 }
@@ -47,9 +50,16 @@ func (o *Options) HTTPClient() *http.Client {
 //
 // Setting the HTTPClient will cause the other HTTP options
 // to be ignored.
+// In case of UsersAPI.SignIn() is used, HTTPClient.Jar will be used for storing session cookie.
 func (o *Options) SetHTTPClient(c *http.Client) *Options {
 	o.httpClient = c
+	o.ownClient = false
 	return o
+}
+
+// OwnHTTPClient returns true of HTTP client was created internally. False if it was set externally.
+func (o *Options) OwnHTTPClient() bool {
+	return o.ownClient
 }
 
 // TLSConfig returns tls.Config
