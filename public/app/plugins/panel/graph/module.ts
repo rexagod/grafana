@@ -12,7 +12,7 @@ import { axesEditorComponent } from './axes_editor';
 import config from 'app/core/config';
 import TimeSeries from 'app/core/time_series2';
 import { getProcessedDataFrames } from 'app/features/dashboard/state/runRequest';
-import { getColorFromHexRgbOrName, PanelEvents, PanelPlugin, DataFrame, FieldConfigProperty } from '@grafana/data';
+import { PanelEvents, PanelPlugin, DataFrame, FieldConfigProperty, getColorForTheme } from '@grafana/data';
 
 import { GraphContextMenuCtrl } from './GraphContextMenuCtrl';
 import { graphPanelMigrationHandler } from './GraphMigrations';
@@ -25,8 +25,8 @@ import { getLocationSrv } from '@grafana/runtime';
 import { getDataTimeRange } from './utils';
 import { changePanelPlugin } from 'app/features/dashboard/state/actions';
 import { dispatch } from 'app/store/store';
-
 import { ThresholdMapper } from 'app/features/alerting/state/ThresholdMapper';
+import { getAnnotationsFromData } from 'app/features/annotations/standardAnnotationSupport';
 
 export class GraphCtrl extends MetricsPanelCtrl {
   static template = template;
@@ -235,6 +235,10 @@ export class GraphCtrl extends MetricsPanelCtrl {
           (this.seriesList as any).alertState = this.alertState.state;
         }
 
+        if (this.panelData!.annotations?.length) {
+          this.annotations = getAnnotationsFromData(this.panelData!.annotations!);
+        }
+
         this.render(this.seriesList);
       },
       () => {
@@ -323,7 +327,7 @@ export class GraphCtrl extends MetricsPanelCtrl {
   }
 
   onColorChange = (series: any, color: string) => {
-    series.setColor(getColorFromHexRgbOrName(color, config.theme.type));
+    series.setColor(getColorForTheme(color, config.theme));
     this.panel.aliasColors[series.alias] = color;
     this.render();
   };
