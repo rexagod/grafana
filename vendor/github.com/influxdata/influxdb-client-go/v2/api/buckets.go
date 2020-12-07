@@ -7,19 +7,21 @@ package api
 import (
 	"context"
 	"fmt"
-
 	"github.com/influxdata/influxdb-client-go/v2/domain"
+	"github.com/influxdata/influxdb-client-go/v2/internal/log"
 )
 
 // BucketsAPI provides methods for managing Buckets in a InfluxDB server.
 type BucketsAPI interface {
-	// GetBuckets returns all buckets, with the specified paging. Empty pagingOptions means the default paging (first 20 results).
+	// GetBuckets returns all buckets.
+	// GetBuckets supports PagingOptions: Offset, Limit, After. Empty pagingOptions means the default paging (first 20 results).
 	GetBuckets(ctx context.Context, pagingOptions ...PagingOption) (*[]domain.Bucket, error)
 	// FindBucketByName returns a bucket found using bucketName.
 	FindBucketByName(ctx context.Context, bucketName string) (*domain.Bucket, error)
 	// FindBucketByID returns a bucket found using bucketID.
 	FindBucketByID(ctx context.Context, bucketID string) (*domain.Bucket, error)
-	// FindBucketsByOrgID returns buckets belonging to the organization with ID orgID, with the specified paging. Empty pagingOptions means the default paging (first 20 results).
+	// FindBucketsByOrgID returns buckets belonging to the organization with ID orgID.
+	// FindBucketsByOrgID supports PagingOptions: Offset, Limit, After. Empty pagingOptions means the default paging (first 20 results).
 	FindBucketsByOrgID(ctx context.Context, orgID string, pagingOptions ...PagingOption) (*[]domain.Bucket, error)
 	// FindBucketsByOrgName returns buckets belonging to the organization with name orgName, with the specified paging. Empty pagingOptions means the default paging (first 20 results).
 	FindBucketsByOrgName(ctx context.Context, orgName string, pagingOptions ...PagingOption) (*[]domain.Bucket, error)
@@ -83,13 +85,16 @@ func (b *bucketsAPI) getBuckets(ctx context.Context, params *domain.GetBucketsPa
 	for _, opt := range pagingOptions {
 		opt(options)
 	}
-	params.Limit = &options.limit
+	if options.limit > 0 {
+		params.Limit = &options.limit
+	}
 	params.Offset = &options.offset
 
 	response, err := b.apiClient.GetBucketsWithResponse(ctx, params)
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("getbuckets: ", string(response.Body))
 	if response.JSONDefault != nil {
 		return nil, domain.DomainErrorToError(response.JSONDefault, response.StatusCode())
 	}

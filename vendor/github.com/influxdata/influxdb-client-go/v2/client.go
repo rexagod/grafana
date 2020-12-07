@@ -33,7 +33,8 @@ type Client interface {
 	// Health returns an InfluxDB server health check result. Read the HealthCheck.Status field to get server status.
 	// Health doesn't validate authentication params.
 	Health(ctx context.Context) (*domain.HealthCheck, error)
-	// Close ensures all ongoing asynchronous write clients finish
+	// Close ensures all ongoing asynchronous write clients finish.
+	// Also closes all idle connections, in case of HTTP client was created internally.
 	Close()
 	// Options returns the options associated with client
 	Options() *Options
@@ -59,6 +60,8 @@ type Client interface {
 	BucketsAPI() api.BucketsAPI
 	// LabelsAPI returns Labels API client
 	LabelsAPI() api.LabelsAPI
+	// TasksAPI returns Tasks API client
+	TasksAPI() api.TasksAPI
 }
 
 // clientImpl implements Client interface
@@ -76,26 +79,33 @@ type clientImpl struct {
 	deleteAPI     api.DeleteAPI
 	bucketsAPI    api.BucketsAPI
 	labelsAPI     api.LabelsAPI
+	tasksAPI      api.TasksAPI
 }
 
 // NewClient creates Client for connecting to given serverURL with provided authentication token, with the default options.
-// Authentication token can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
-// In such case Setup will set authentication token
+// serverURL is the InfluxDB server base URL, e.g. http://localhost:8086,
+// authToken is an authentication token. It can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
+// In such case, calling Setup() will set the authentication token.
 func NewClient(serverURL string, authToken string) Client {
 	return NewClientWithOptions(serverURL, authToken, DefaultOptions())
 }
 
 // NewClientWithOptions creates Client for connecting to given serverURL with provided authentication token
-// and configured with custom Options
-// Authentication token can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
-// In such case Setup will set authentication token
+// and configured with custom Options.
+// serverURL is the InfluxDB server base URL, e.g. http://localhost:8086,
+// authToken is an authentication token. It can be empty in case of connecting to newly installed InfluxDB server, which has not been set up yet.
+// In such case, calling Setup() will set authentication token
 func NewClientWithOptions(serverURL string, authToken string, options *Options) Client {
 	normServerURL := serverURL
 	if !strings.HasSuffix(normServerURL, "/") {
 		// For subsequent path parts concatenation, url has to end with '/'
 		normServerURL = serverURL + "/"
 	}
-	service := http.NewService(normServerURL, "Token "+authToken, options.httpOptions)
+	authorization := ""
+	if len(authToken) > 0 {
+		authorization = "Token " + authToken
+	}
+	service := http.NewService(normServerURL, authorization, options.httpOptions)
 	client := &clientImpl{
 		serverURL:     serverURL,
 		options:       options,
@@ -211,6 +221,9 @@ func (c *clientImpl) Close() {
 	for key := range c.syncWriteAPIs {
 		delete(c.syncWriteAPIs, key)
 	}
+	if c.options.HTTPOptions().OwnHTTPClient() {
+		c.options.HTTPOptions().HTTPClient().CloseIdleConnections()
+	}
 }
 
 func (c *clientImpl) QueryAPI(org string) api.QueryAPI {
@@ -239,7 +252,7 @@ func (c *clientImpl) UsersAPI() api.UsersAPI {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.usersAPI == nil {
-		c.usersAPI = api.NewUsersAPI(c.apiClient)
+		c.usersAPI = api.NewUsersAPI(c.apiClient, c.httpService, c.options.HTTPClient())
 	}
 	return c.usersAPI
 }
@@ -269,4 +282,13 @@ func (c *clientImpl) LabelsAPI() api.LabelsAPI {
 		c.labelsAPI = api.NewLabelsAPI(c.apiClient)
 	}
 	return c.labelsAPI
+}
+
+func (c *clientImpl) TasksAPI() api.TasksAPI {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.tasksAPI == nil {
+		c.tasksAPI = api.NewTasksAPI(c.apiClient)
+	}
+	return c.tasksAPI
 }

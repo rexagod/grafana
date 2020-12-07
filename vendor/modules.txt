@@ -90,6 +90,7 @@ github.com/aws/aws-sdk-go/service/s3/s3manager
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beevik/etree v1.1.0
+## explicit
 github.com/beevik/etree
 # github.com/benbjohnson/clock v0.0.0-20161215174838-7dc76406b6d3
 ## explicit
@@ -133,8 +134,7 @@ github.com/crewjam/saml/xmlenc
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/deepmap/oapi-codegen v1.3.11
-## explicit
+# github.com/deepmap/oapi-codegen v1.3.13
 github.com/deepmap/oapi-codegen/pkg/runtime
 github.com/deepmap/oapi-codegen/pkg/types
 # github.com/denisenkom/go-mssqldb v0.0.0-20200620013148-b91950f658ec => github.com/denisenkom/go-mssqldb v0.0.0-20200620013148-b91950f658ec
@@ -158,6 +158,9 @@ github.com/facebookgo/structtag
 # github.com/fatih/color v1.9.0
 ## explicit
 github.com/fatih/color
+# github.com/gchaincl/sqlhooks v1.3.0
+## explicit
+github.com/gchaincl/sqlhooks
 # github.com/go-macaron/binding v0.0.0-20190806013118-0b4f37bab25b
 ## explicit
 github.com/go-macaron/binding
@@ -195,9 +198,6 @@ github.com/gogo/protobuf/types
 github.com/golang-sql/civil
 # github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 github.com/golang/groupcache/lru
-# github.com/golang/mock v1.4.3
-## explicit
-github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.4.2
 ## explicit
 github.com/golang/protobuf/internal/gengogrpc
@@ -239,7 +239,7 @@ github.com/gosimple/slug
 ## explicit
 github.com/grafana/grafana-plugin-model/go/datasource
 github.com/grafana/grafana-plugin-model/go/renderer
-# github.com/grafana/grafana-plugin-sdk-go v0.77.0
+# github.com/grafana/grafana-plugin-sdk-go v0.79.0
 ## explicit
 github.com/grafana/grafana-plugin-sdk-go/backend
 github.com/grafana/grafana-plugin-sdk-go/backend/grpcplugin
@@ -274,7 +274,7 @@ github.com/igm/sockjs-go/v3/sockjs
 # github.com/inconshreveable/log15 v0.0.0-20180818164646-67afb5ed74ec
 ## explicit
 github.com/inconshreveable/log15
-# github.com/influxdata/influxdb-client-go/v2 v2.0.1
+# github.com/influxdata/influxdb-client-go/v2 v2.2.0
 ## explicit
 github.com/influxdata/influxdb-client-go/v2
 github.com/influxdata/influxdb-client-go/v2/api
@@ -517,6 +517,7 @@ golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
+golang.org/x/net/publicsuffix
 golang.org/x/net/trace
 # golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 ## explicit

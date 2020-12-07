@@ -9,7 +9,7 @@
 //
 // Service can be obtained from client using HTTPService() method.
 // It can be also created directly. To instantiate a Service use NewService(). Remember, the authorization param is in form "Token your-auth-token". e.g. "Token DXnd7annkGteV5Wqx9G3YjO9Ezkw87nHk8OabcyHCxF5451kdBV0Ag2cG7OmZZgCUTHroagUPdxbuoyen6TSPw==".
-//     srv := http.NewService("http://localhost:9999", "Token my-token", http.DefaultOptions())
+//     srv := http.NewService("http://localhost:8086", "Token my-token", http.DefaultOptions())
 package http
 
 import (
@@ -124,7 +124,9 @@ func (s *service) DoHTTPRequest(req *http.Request, requestCallback RequestCallba
 
 func (s *service) DoHTTPRequestWithResponse(req *http.Request, requestCallback RequestCallback) (*http.Response, error) {
 	log.Infof("HTTP %s req to %s", req.Method, req.URL.String())
-	req.Header.Set("Authorization", s.authorization)
+	if len(s.authorization) > 0 {
+		req.Header.Set("Authorization", s.authorization)
+	}
 	req.Header.Set("User-Agent", http2.UserAgent)
 	if requestCallback != nil {
 		requestCallback(req)
