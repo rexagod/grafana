@@ -125,7 +125,7 @@ github.com/cespare/xxhash/v2
 github.com/cheekybits/genny/generic
 # github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d
 github.com/cpuguy83/go-md2man/v2/md2man
-# github.com/crewjam/saml v0.4.1
+# github.com/crewjam/saml v0.4.4-0.20201214083806-0dd2422c212e
 ## explicit
 github.com/crewjam/saml
 github.com/crewjam/saml/logger
@@ -304,7 +304,7 @@ github.com/influxdata/line-protocol
 # github.com/jmespath/go-jmespath v0.3.0
 ## explicit
 github.com/jmespath/go-jmespath
-# github.com/jonboulle/clockwork v0.2.1
+# github.com/jonboulle/clockwork v0.2.2
 ## explicit
 github.com/jonboulle/clockwork
 # github.com/json-iterator/go v1.1.10
@@ -337,6 +337,8 @@ github.com/linkedin/goavro/v2
 ## explicit
 github.com/magefile/mage/mg
 github.com/magefile/mage/sh
+# github.com/mattermost/xml-roundtrip-validator v0.0.0-20201213122252-bcd7e1b9601e
+github.com/mattermost/xml-roundtrip-validator
 # github.com/mattetti/filebuffer v1.0.0
 github.com/mattetti/filebuffer
 # github.com/mattn/go-colorable v0.1.7
@@ -409,7 +411,7 @@ github.com/robfig/cron
 # github.com/robfig/cron/v3 v3.0.0
 ## explicit
 github.com/robfig/cron/v3
-# github.com/russellhaering/goxmldsig v0.0.0-20200902171629-2e1fbc2c5593
+# github.com/russellhaering/goxmldsig v1.1.0
 ## explicit
 github.com/russellhaering/goxmldsig
 github.com/russellhaering/goxmldsig/etreeutils
@@ -515,7 +517,7 @@ go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
 # go.uber.org/atomic v1.6.0
 go.uber.org/atomic
-# golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a
+# golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
 ## explicit
 golang.org/x/crypto/cast5
 golang.org/x/crypto/ed25519
