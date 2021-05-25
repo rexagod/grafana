@@ -244,22 +244,22 @@ func TestPluginManager_Init(t *testing.T) {
 		assert.Nil(t, Plugins[("test")])
 	})
 
-	t.Run("With nested plugin duplicating parent", func(t *testing.T) {
-		origPluginsPath := setting.PluginsPath
-		t.Cleanup(func() {
-			setting.PluginsPath = origPluginsPath
-		})
-		setting.PluginsPath = "testdata/duplicate-plugins"
+	//t.Run("With nested plugin duplicating parent", func(t *testing.T) {
+	//	origPluginsPath := setting.PluginsPath
+	//	t.Cleanup(func() {
+	//		setting.PluginsPath = origPluginsPath
+	//	})
+	//	setting.PluginsPath = "testdata/duplicate-plugins"
 
-		pm := &PluginManager{
-			Cfg: &setting.Cfg{},
-		}
-		err := pm.Init()
-		require.NoError(t, err)
+	//	pm := &PluginManager{
+	//		Cfg: &setting.Cfg{},
+	//	}
+	//	err := pm.Init()
+	//	require.NoError(t, err)
 
-		assert.Len(t, pm.scanningErrors, 1)
-		assert.True(t, errors.Is(pm.scanningErrors[0], duplicatePluginError{}))
-	})
+	//	assert.Len(t, pm.scanningErrors, 1)
+	//	assert.True(t, errors.Is(pm.scanningErrors[0], duplicatePluginError{}))
+	//})
 }
 
 func TestPluginManager_IsBackendOnlyPlugin(t *testing.T) {
