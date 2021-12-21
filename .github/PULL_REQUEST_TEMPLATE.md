@@ -1,4 +1,10 @@
 <!--
+    OpenShift: Don't forget to run `./scripts/rh-manifest.sh` from the
+    repository root, and check-in the updated `rh-manifest.txt` file if
+    necessary.
+-->
+
+<!--
 
 Thank you for sending a pull request! Here are some tips:
 
