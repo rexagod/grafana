@@ -1,0 +1,38 @@
+component: "Monitoring"
+
+reviewers:
+- bwplotka
+- simonpasquier
+- slashpai
+- prashbnair
+- arajkumar
+- sthaha
+- PhilipGough
+- bison
+- fpetkovski
+- raptorsun
+- jan--f
+
+approvers:
+- bwplotka
+- simonpasquier
+- slashpai
+- prashbnair
+- arajkumar
+- sthaha
+- PhilipGough
+- bison
+- fpetkovski
+- raptorsun
+- jan--f
+
+emeritus_approvers:
+- brancz
+- pgier
+- squat
+- dgrisonnet
+- paulfantom
+- metalmatze
+- krasi-georgiev
+- s-urbaniak
+- LiliC
