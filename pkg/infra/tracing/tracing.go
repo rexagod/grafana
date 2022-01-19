@@ -4,19 +4,48 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/registry"
 	"github.com/grafana/grafana/pkg/setting"
+	"go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	"github.com/uber/jaeger-client-go/zipkin"
 )
 
-func init() {
-	registry.RegisterService(&TracingService{})
+const (
+	envJaegerAgentHost = "JAEGER_AGENT_HOST"
+	envJaegerAgentPort = "JAEGER_AGENT_PORT"
+)
+
+func ProvideService(cfg *setting.Cfg) (Tracer, error) {
+	ts := &TracingService{
+		Cfg: cfg,
+		log: log.New("tracing"),
+	}
+
+	if err := ts.parseSettings(); err != nil {
+		return nil, err
+	}
+
+	if ts.enabled {
+		return ts, ts.initGlobalTracer()
+	}
+
+	ots := &OpentelemetryTracingService{
+		Cfg: cfg,
+		log: log.New("tracing"),
+	}
+
+	if err := ots.parseSettingsOpentelemetry(); err != nil {
+		return nil, err
+	}
+
+	return ots, ots.initOpentelemetryTracer()
 }
 
 type TracingService struct {
@@ -31,27 +60,27 @@ type TracingService struct {
 	zipkinPropagation        bool
 	disableSharedZipkinSpans bool
 
-	Cfg *setting.Cfg `inject:""`
+	Cfg *setting.Cfg
 }
 
-func (ts *TracingService) Init() error {
-	ts.log = log.New("tracing")
-	ts.parseSettings()
-
-	if ts.enabled {
-		return ts.initGlobalTracer()
-	}
-
-	return nil
+type OpentracingSpan struct {
+	span opentracing.Span
 }
 
-func (ts *TracingService) parseSettings() {
+func (ts *TracingService) parseSettings() error {
 	var section, err = ts.Cfg.Raw.GetSection("tracing.jaeger")
 	if err != nil {
-		return
+		return err
 	}
 
 	ts.address = section.Key("address").MustString("")
+	if ts.address == "" {
+		host := os.Getenv(envJaegerAgentHost)
+		port := os.Getenv(envJaegerAgentPort)
+		if host != "" || port != "" {
+			ts.address = fmt.Sprintf("%s:%s", host, port)
+		}
+	}
 	if ts.address != "" {
 		ts.enabled = true
 	}
@@ -62,6 +91,7 @@ func (ts *TracingService) parseSettings() {
 	ts.zipkinPropagation = section.Key("zipkin_propagation").MustBool(false)
 	ts.disableSharedZipkinSpans = section.Key("disable_shared_zipkin_spans").MustBool(false)
 	ts.samplingServerURL = section.Key("sampling_server_url").MustString("")
+	return nil
 }
 
 func (ts *TracingService) initJaegerCfg() (jaegercfg.Configuration, error) {
@@ -134,6 +164,24 @@ func (ts *TracingService) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (ts *TracingService) Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, Span) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, spanName)
+	oSpan := OpentracingSpan{
+		span: span,
+	}
+	return ctx, oSpan
+}
+
+func (s OpentracingSpan) End() {
+	s.span.Finish()
+}
+
+func (s OpentracingSpan) SetAttributes(kv ...attribute.KeyValue) {
+	for k, v := range kv {
+		s.span.SetTag(fmt.Sprint(k), v)
+	}
 }
 
 func splitTagSettings(input string) map[string]string {

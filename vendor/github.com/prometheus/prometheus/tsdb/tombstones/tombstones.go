@@ -24,9 +24,10 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -125,10 +126,8 @@ func WriteFile(logger log.Logger, dir string, tr Reader) (int64, error) {
 	}
 	size += n
 
-	var merr tsdb_errors.MultiError
-	if merr.Add(f.Sync()); merr.Err() != nil {
-		merr.Add(f.Close())
-		return 0, merr.Err()
+	if err := f.Sync(); err != nil {
+		return 0, tsdb_errors.NewMulti(err, f.Close()).Err()
 	}
 
 	if err = f.Close(); err != nil {
@@ -251,6 +250,34 @@ func (t *MemTombstones) Get(ref uint64) (Intervals, error) {
 	t.mtx.RLock()
 	defer t.mtx.RUnlock()
 	return t.intvlGroups[ref], nil
+}
+
+func (t *MemTombstones) DeleteTombstones(refs map[uint64]struct{}) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	for ref := range refs {
+		delete(t.intvlGroups, ref)
+	}
+}
+
+func (t *MemTombstones) TruncateBefore(beforeT int64) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	for ref, ivs := range t.intvlGroups {
+		i := len(ivs) - 1
+		for ; i >= 0; i-- {
+			if beforeT > ivs[i].Maxt {
+				break
+			}
+		}
+		if len(ivs[i+1:]) == 0 {
+			delete(t.intvlGroups, ref)
+		} else {
+			newIvs := make(Intervals, len(ivs[i+1:]))
+			copy(newIvs, ivs[i+1:])
+			t.intvlGroups[ref] = newIvs
+		}
+	}
 }
 
 func (t *MemTombstones) Iter(f func(uint64, Intervals) error) error {

@@ -1,4 +1,4 @@
-// Copyright 2020 InfluxData, Inc. All rights reserved.
+// Copyright 2020-2021 InfluxData, Inc. All rights reserved.
 // Use of this source code is governed by MIT
 // license that can be found in the LICENSE file.
 
@@ -61,7 +61,8 @@ func (o *Options) MaxRetries() uint {
 	return o.WriteOptions().MaxRetries()
 }
 
-// SetMaxRetries sets maximum count of retry attempts of failed writes
+// SetMaxRetries sets maximum count of retry attempts of failed writes.
+// Setting zero value disables retry strategy.
 func (o *Options) SetMaxRetries(maxRetries uint) *Options {
 	o.WriteOptions().SetMaxRetries(maxRetries)
 	return o

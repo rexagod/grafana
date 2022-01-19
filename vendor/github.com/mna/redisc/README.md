@@ -1,12 +1,23 @@
-# redisc [![GoDoc](https://godoc.org/github.com/mna/redisc?status.png)][godoc] [![Build Status](https://semaphoreci.com/api/v1/mna/redisc/branches/master/badge.svg)](https://semaphoreci.com/mna/redisc)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mna/redisc.svg)](https://pkg.go.dev/github.com/mna/redisc)
+[![Build Status](https://github.com/mna/redisc/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/mna/redisc/actions)
 
-Package redisc implements a redis cluster client built on top of the [redigo package][redigo]. See the [godoc][] for details.
+# redisc
+
+Package redisc implements a redis cluster client built on top of the [redigo package][redigo]. See the [documentation][godoc] for details.
 
 ## Installation
 
     $ go get [-u] [-t] github.com/mna/redisc
 
 ## Releases
+
+* **v1.3.2** : Export the `HashSlots` constant to make it nicer to write the `Cluster.LayoutRefresh` function signature.
+
+* **v1.3.1** : Fix closing/releasing of connections used in `Cluster.EachNode`.
+
+* **v1.3.0** : Add `Cluster.EachNode` to call a function with a connection for each known node in the cluster (e.g. to run diagnostics commands on each node or to collect all keys in a cluster); add optional Cluster function field `BgError` to receive notification of errors happening in background topology refreshes and on closing of `RetryConn` after following a redirection to a new connection; add optional Cluster function field `LayoutRefresh` to receive the old and new cluster slot mappings to server address(es); prevent unnecessary cluster layout refreshes when the internal mapping is the same as the redirection error; better handling of closed Cluster; move CI to Github Actions; drop support for old Go versions (currently tested on 1.15+); enable more static analysis/linters; refactor tests to create less separate clusters and run faster.
+
+* **v1.2.0** : Use Go modules, fix a failing test due to changed error message on Redis 6.
 
 * **v1.1.7** : Do not bind to a random node if `Do` is called without a command and the connection is not already bound (thanks to [@tysonmote][tysonmote]).
 
@@ -28,15 +39,15 @@ Package redisc implements a redis cluster client built on top of the [redigo pac
 
 ## Documentation
 
-The [godoc][] is the canonical source for documentation.
+The [code documentation][godoc] is the canonical source for documentation.
 
-The design goal of redisc is to be as compatible as possible with the [redigo][] package. As such, the `Cluster` type can be used as a drop-in replacement to a `redis.Pool`, and the connections returned by the cluster implement the `redis.Conn` interface. The package offers additional features specific to dealing with a cluster that may be needed for more advanced scenarios.
+The design goal of redisc is to be as compatible as possible with the [redigo][] package. As such, the `Cluster` type can be used as a drop-in replacement to a `redis.Pool` when moving from a standalone Redis to a Redis Cluster setup, and the connections returned by the cluster implement redigo's `redis.Conn` interface. The package offers additional features specific to dealing with a cluster that may be needed for more advanced scenarios.
 
 The main features are:
 
 * Drop-in replacement for `redis.Pool` (the `Cluster` type implements the same `Get` and `Close` method signatures).
 * Connections are `redis.Conn` interfaces and use the `redigo` package to execute commands, `redisc` only handles the cluster part.
-* Support for all cluster-supported commands including scripting, transactions and pub-sub.
+* Support for all cluster-supported commands including scripting, transactions and pub-sub (within the limitations imposed by Redis Cluster).
 * Support for READONLY/READWRITE commands to allow reading data from replicas.
 * Client-side smart routing, automatically keeps track of which node holds which key slots.
 * Automatic retry of MOVED, ASK and TRYAGAIN errors when desired, via `RetryConn`.
@@ -44,6 +55,8 @@ The main features are:
 * Automatic detection of the node to call based on the command's first parameter (assumed to be the key).
 * Explicit selection of the node to call via `BindConn` when needed.
 * Support for optimal batch calls via `SplitBySlot`.
+
+Note that to make efficient use of Redis Cluster, some upfront work is usually required. A good understanding of Redis Cluster is highly recommended and the official Redis website has [good documentation that covers this](https://redis.io/topics/cluster-spec). In particular, [Migrating to Redis Cluster](https://redis.io/topics/cluster-tutorial#migrating-to-redis-cluster) will help understand how straightforward (or not) the migration may be for your specific case.
 
 ## Alternatives
 
@@ -61,17 +74,15 @@ There are a number of ways you can support the project:
 * Pull requests: please discuss new code in an issue first, unless the fix is really trivial.
   - Make sure new code is tested.
   - Be mindful of existing code - PRs that break existing code have a high probability of being declined, unless it fixes a serious issue.
-
-If you desperately want to send money my way, I have a BuyMeACoffee.com page:
-
-<a href="https://www.buymeacoffee.com/mna" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;-webkit-box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;" ></a>
+* Sponsor the developer
+  - See the Github Sponsor button at the top of the repo on github
 
 ## License
 
 The [BSD 3-Clause license][bsd].
 
 [bsd]: http://opensource.org/licenses/BSD-3-Clause
-[godoc]: http://godoc.org/github.com/mna/redisc
+[godoc]: https://pkg.go.dev/github.com/mna/redisc
 [redigo]: https://github.com/gomodule/redigo
 [oldredigo]: https://github.com/garyburd/redigo
 [rgc]: https://github.com/chasex/redis-go-cluster

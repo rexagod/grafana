@@ -1,39 +1,59 @@
 import React from 'react';
-import { getNamedColorPalette } from '@grafana/data';
-import { Themeable } from '../../types/index';
 import NamedColorsGroup from './NamedColorsGroup';
+import { VerticalGroup } from '../Layout/Layout';
+import { ColorSwatch } from './ColorSwatch';
+import { useStyles2, useTheme2 } from '../../themes/ThemeContext';
+import { GrafanaTheme2 } from '@grafana/data';
+import { css } from '@emotion/css';
 
-export interface NamedColorsPaletteProps extends Themeable {
+export interface NamedColorsPaletteProps {
   color?: string;
   onChange: (colorName: string) => void;
 }
 
-export const NamedColorsPalette = ({ color, onChange, theme }: NamedColorsPaletteProps) => {
+export const NamedColorsPalette = ({ color, onChange }: NamedColorsPaletteProps) => {
+  const theme = useTheme2();
+  const styles = useStyles2(getStyles);
+
   const swatches: JSX.Element[] = [];
-  getNamedColorPalette().forEach((colors, hue) => {
-    swatches.push(
-      <NamedColorsGroup
-        key={hue}
-        theme={theme}
-        selectedColor={color}
-        colors={colors}
-        onColorSelect={(color) => {
-          onChange(color.name);
-        }}
-      />
-    );
-  });
+  for (const hue of theme.visualization.hues) {
+    swatches.push(<NamedColorsGroup key={hue.name} selectedColor={color} hue={hue} onColorSelect={onChange} />);
+  }
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gridRowGap: '24px',
-        gridColumnGap: '24px',
-      }}
-    >
-      {swatches}
-    </div>
+    <VerticalGroup spacing="md">
+      <div className={styles.popoverContainer}>{swatches}</div>
+      <div className={styles.container}>
+        <ColorSwatch
+          isSelected={color === 'transparent'}
+          color={'rgba(0,0,0,0)'}
+          label="Transparent"
+          onClick={() => onChange('transparent')}
+        />
+        <ColorSwatch
+          isSelected={color === 'text'}
+          color={theme.colors.text.primary}
+          label="Text color"
+          onClick={() => onChange('text')}
+        />
+      </div>
+    </VerticalGroup>
   );
+};
+
+const getStyles = (theme: GrafanaTheme2) => {
+  return {
+    container: css`
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-column-gap: ${theme.spacing(2)};
+      grid-row-gap: ${theme.spacing(2)};
+      flex-grow: 1;
+      padding-left: ${theme.spacing(2)};
+    `,
+    popoverContainer: css`
+      display: grid;
+      flex-grow: 1;
+    `,
+  };
 };

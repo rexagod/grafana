@@ -328,3 +328,211 @@ var Diagnostics_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "backend.proto",
 }
+
+// StreamClient is the client API for Stream service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type StreamClient interface {
+	// SubscribeStream called when a user tries to subscribe to a plugin/datasource
+	// managed channel path – thus plugin can check subscribe permissions and communicate
+	// options with Grafana Core. When the first subscriber joins a channel, RunStream
+	// will be called.
+	SubscribeStream(ctx context.Context, in *SubscribeStreamRequest, opts ...grpc.CallOption) (*SubscribeStreamResponse, error)
+	// RunStream will be initiated by Grafana to consume a stream. RunStream will be
+	// called once for the first client successfully subscribed to a channel path.
+	// When Grafana detects that there are no longer any subscribers inside a channel,
+	// the call will be terminated until next active subscriber appears. Call termination
+	// can happen with a delay.
+	RunStream(ctx context.Context, in *RunStreamRequest, opts ...grpc.CallOption) (Stream_RunStreamClient, error)
+	// PublishStream called when a user tries to publish to a plugin/datasource
+	// managed channel path. Here plugin can check publish permissions and
+	// modify publication data if required.
+	PublishStream(ctx context.Context, in *PublishStreamRequest, opts ...grpc.CallOption) (*PublishStreamResponse, error)
+}
+
+type streamClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewStreamClient(cc grpc.ClientConnInterface) StreamClient {
+	return &streamClient{cc}
+}
+
+func (c *streamClient) SubscribeStream(ctx context.Context, in *SubscribeStreamRequest, opts ...grpc.CallOption) (*SubscribeStreamResponse, error) {
+	out := new(SubscribeStreamResponse)
+	err := c.cc.Invoke(ctx, "/pluginv2.Stream/SubscribeStream", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *streamClient) RunStream(ctx context.Context, in *RunStreamRequest, opts ...grpc.CallOption) (Stream_RunStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Stream_ServiceDesc.Streams[0], "/pluginv2.Stream/RunStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &streamRunStreamClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Stream_RunStreamClient interface {
+	Recv() (*StreamPacket, error)
+	grpc.ClientStream
+}
+
+type streamRunStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *streamRunStreamClient) Recv() (*StreamPacket, error) {
+	m := new(StreamPacket)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *streamClient) PublishStream(ctx context.Context, in *PublishStreamRequest, opts ...grpc.CallOption) (*PublishStreamResponse, error) {
+	out := new(PublishStreamResponse)
+	err := c.cc.Invoke(ctx, "/pluginv2.Stream/PublishStream", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// StreamServer is the server API for Stream service.
+// All implementations should embed UnimplementedStreamServer
+// for forward compatibility
+type StreamServer interface {
+	// SubscribeStream called when a user tries to subscribe to a plugin/datasource
+	// managed channel path – thus plugin can check subscribe permissions and communicate
+	// options with Grafana Core. When the first subscriber joins a channel, RunStream
+	// will be called.
+	SubscribeStream(context.Context, *SubscribeStreamRequest) (*SubscribeStreamResponse, error)
+	// RunStream will be initiated by Grafana to consume a stream. RunStream will be
+	// called once for the first client successfully subscribed to a channel path.
+	// When Grafana detects that there are no longer any subscribers inside a channel,
+	// the call will be terminated until next active subscriber appears. Call termination
+	// can happen with a delay.
+	RunStream(*RunStreamRequest, Stream_RunStreamServer) error
+	// PublishStream called when a user tries to publish to a plugin/datasource
+	// managed channel path. Here plugin can check publish permissions and
+	// modify publication data if required.
+	PublishStream(context.Context, *PublishStreamRequest) (*PublishStreamResponse, error)
+}
+
+// UnimplementedStreamServer should be embedded to have forward compatible implementations.
+type UnimplementedStreamServer struct {
+}
+
+func (UnimplementedStreamServer) SubscribeStream(context.Context, *SubscribeStreamRequest) (*SubscribeStreamResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubscribeStream not implemented")
+}
+func (UnimplementedStreamServer) RunStream(*RunStreamRequest, Stream_RunStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method RunStream not implemented")
+}
+func (UnimplementedStreamServer) PublishStream(context.Context, *PublishStreamRequest) (*PublishStreamResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishStream not implemented")
+}
+
+// UnsafeStreamServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to StreamServer will
+// result in compilation errors.
+type UnsafeStreamServer interface {
+	mustEmbedUnimplementedStreamServer()
+}
+
+func RegisterStreamServer(s grpc.ServiceRegistrar, srv StreamServer) {
+	s.RegisterService(&Stream_ServiceDesc, srv)
+}
+
+func _Stream_SubscribeStream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubscribeStreamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StreamServer).SubscribeStream(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pluginv2.Stream/SubscribeStream",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StreamServer).SubscribeStream(ctx, req.(*SubscribeStreamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Stream_RunStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RunStreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StreamServer).RunStream(m, &streamRunStreamServer{stream})
+}
+
+type Stream_RunStreamServer interface {
+	Send(*StreamPacket) error
+	grpc.ServerStream
+}
+
+type streamRunStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *streamRunStreamServer) Send(m *StreamPacket) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Stream_PublishStream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishStreamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StreamServer).PublishStream(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pluginv2.Stream/PublishStream",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StreamServer).PublishStream(ctx, req.(*PublishStreamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Stream_ServiceDesc is the grpc.ServiceDesc for Stream service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Stream_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginv2.Stream",
+	HandlerType: (*StreamServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SubscribeStream",
+			Handler:    _Stream_SubscribeStream_Handler,
+		},
+		{
+			MethodName: "PublishStream",
+			Handler:    _Stream_PublishStream_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "RunStream",
+			Handler:       _Stream_RunStream_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "backend.proto",
+}

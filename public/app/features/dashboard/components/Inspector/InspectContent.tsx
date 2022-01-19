@@ -13,6 +13,7 @@ import { InspectDataTab } from 'app/features/inspector/InspectDataTab';
 import { InspectTab } from 'app/features/inspector/types';
 import { DashboardModel, PanelModel } from '../../state';
 import { GetDataOptions } from '../../../query/state/PanelQueryRunner';
+import { InspectActionsTab } from './PanelInspectActions';
 
 interface Props {
   dashboard: DashboardModel;
@@ -81,6 +82,7 @@ export const InspectContent: React.FC<Props> = ({
           isLoading={isDataLoading}
           options={dataOptions}
           onOptionsChange={onDataOptionsChange}
+          timeZone={dashboard.timezone}
         />
       )}
       <CustomScrollbar autoHeightMin="100%">
@@ -97,6 +99,7 @@ export const InspectContent: React.FC<Props> = ({
           {data && activeTab === InspectTab.Query && (
             <QueryInspector panel={panel} data={data.series} onRefreshQuery={() => panel.refresh()} />
           )}
+          {activeTab === InspectTab.Actions && <InspectActionsTab panel={panel} data={data} />}
         </TabContent>
       </CustomScrollbar>
     </Drawer>

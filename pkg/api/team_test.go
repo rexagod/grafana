@@ -1,14 +1,15 @@
 package api
 
 import (
+	"context"
 	"testing"
-
-	"github.com/grafana/grafana/pkg/setting"
-	macaron "gopkg.in/macaron.v1"
 
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/sqlstore"
+	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/web"
 
 	"net/http"
 
@@ -45,7 +46,7 @@ func TestTeamAPIEndpoint(t *testing.T) {
 		loggedInUserScenario(t, "When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
 			var sentLimit int
 			var sendPage int
-			bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.SearchTeamsQuery) error {
 				query.Result = mockResult
 
 				sentLimit = query.Limit
@@ -70,7 +71,7 @@ func TestTeamAPIEndpoint(t *testing.T) {
 		loggedInUserScenario(t, "When calling GET on", "/api/teams/search", func(sc *scenarioContext) {
 			var sentLimit int
 			var sendPage int
-			bus.AddHandler("test", func(query *models.SearchTeamsQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.SearchTeamsQuery) error {
 				query.Result = mockResult
 
 				sentLimit = query.Limit
@@ -98,52 +99,57 @@ func TestTeamAPIEndpoint(t *testing.T) {
 
 		teamName := "team foo"
 
-		createTeamCalled := 0
-		bus.AddHandler("test", func(cmd *models.CreateTeamCommand) error {
-			createTeamCalled += 1
-			cmd.Result = models.Team{Name: teamName, Id: 42}
-			return nil
+		// TODO: Use a fake SQLStore when it's represented by an interface
+		origCreateTeam := createTeam
+		origAddTeamMember := addTeamMember
+		t.Cleanup(func() {
+			createTeam = origCreateTeam
+			addTeamMember = origAddTeamMember
 		})
+
+		createTeamCalled := 0
+		createTeam = func(sqlStore *sqlstore.SQLStore, name, email string, orgID int64) (models.Team, error) {
+			createTeamCalled++
+			return models.Team{Name: teamName, Id: 42}, nil
+		}
 
 		addTeamMemberCalled := 0
-		bus.AddHandler("test", func(cmd *models.AddTeamMemberCommand) error {
-			addTeamMemberCalled += 1
+		addTeamMember = func(sqlStore *sqlstore.SQLStore, userID, orgID, teamID int64, isExternal bool,
+			permission models.PermissionType) error {
+			addTeamMemberCalled++
 			return nil
-		})
+		}
 
-		req, _ := http.NewRequest("POST", "/api/teams", nil)
+		req, err := http.NewRequest("POST", "/api/teams", nil)
+		require.NoError(t, err)
 
 		t.Run("with no real signed in user", func(t *testing.T) {
 			stub := &testLogger{}
 			c := &models.ReqContext{
-				Context: &macaron.Context{
-					Req: macaron.Request{Request: req},
-				},
+				Context:      &web.Context{Req: req},
 				SignedInUser: &models.SignedInUser{},
 				Logger:       stub,
 			}
 			c.OrgRole = models.ROLE_EDITOR
-			cmd := models.CreateTeamCommand{Name: teamName}
-			hs.CreateTeam(c, cmd)
+			c.Req.Body = mockRequestBody(models.CreateTeamCommand{Name: teamName})
+			hs.CreateTeam(c)
 			assert.Equal(t, createTeamCalled, 1)
 			assert.Equal(t, addTeamMemberCalled, 0)
 			assert.True(t, stub.warnCalled)
-			assert.Equal(t, stub.warnMessage, "Could not add creator to team because is not a real user.")
+			assert.Equal(t, stub.warnMessage, "Could not add creator to team because is not a real user")
 		})
 
 		t.Run("with real signed in user", func(t *testing.T) {
 			stub := &testLogger{}
 			c := &models.ReqContext{
-				Context: &macaron.Context{
-					Req: macaron.Request{Request: req},
-				},
+				Context:      &web.Context{Req: req},
 				SignedInUser: &models.SignedInUser{UserId: 42},
 				Logger:       stub,
 			}
 			c.OrgRole = models.ROLE_EDITOR
-			cmd := models.CreateTeamCommand{Name: teamName}
+			c.Req.Body = mockRequestBody(models.CreateTeamCommand{Name: teamName})
 			createTeamCalled, addTeamMemberCalled = 0, 0
-			hs.CreateTeam(c, cmd)
+			hs.CreateTeam(c)
 			assert.Equal(t, createTeamCalled, 1)
 			assert.Equal(t, addTeamMemberCalled, 1)
 			assert.False(t, stub.warnCalled)

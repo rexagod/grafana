@@ -10,153 +10,137 @@ import (
 	"testing"
 	"time"
 
-	//"github.com/aws/aws-sdk-go/aws"
-	//"github.com/aws/aws-sdk-go/aws/session"
-	//"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
-	//"github.com/aws/aws-sdk-go/service/cloudwatchlogs/cloudwatchlogsiface"
-	//"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs/cloudwatchlogsiface"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/tests/testinfra"
-	"github.com/grafana/grafana/pkg/tsdb"
-	//"github.com/grafana/grafana/pkg/tsdb/cloudwatch"
+	"github.com/grafana/grafana/pkg/tsdb/cloudwatch"
 
-	//cwapi "github.com/aws/aws-sdk-go/service/cloudwatch"
+	cwapi "github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/grafana/grafana/pkg/api/dtos"
-	//"github.com/grafana/grafana/pkg/components/simplejson"
+	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-//func TestQueryCloudWatchMetrics(t *testing.T) {
-//	grafDir, cfgPath := testinfra.CreateGrafDir(t)
-//	sqlStore := setUpDatabase(t, grafDir)
-//	addr := testinfra.StartGrafana(t, grafDir, cfgPath, sqlStore)
-//
-//	origNewCWClient := cloudwatch.NewCWClient
-//	t.Cleanup(func() {
-//		cloudwatch.NewCWClient = origNewCWClient
-//	})
-//	var client cloudwatch.FakeCWClient
-//	cloudwatch.NewCWClient = func(sess *session.Session) cloudwatchiface.CloudWatchAPI {
-//		return client
-//	}
-//
-//	t.Run("Custom metrics", func(t *testing.T) {
-//		client = cloudwatch.FakeCWClient{
-//			Metrics: []*cwapi.Metric{
-//				{
-//					MetricName: aws.String("Test_MetricName"),
-//					Dimensions: []*cwapi.Dimension{
-//						{
-//							Name: aws.String("Test_DimensionName"),
-//						},
-//					},
-//				},
-//			},
-//		}
-//
-//		req := dtos.MetricRequest{
-//			Queries: []*simplejson.Json{
-//				simplejson.NewFromAny(map[string]interface{}{
-//					"type":         "metricFindQuery",
-//					"subtype":      "metrics",
-//					"region":       "us-east-1",
-//					"namespace":    "custom",
-//					"datasourceId": 1,
-//				}),
-//			},
-//		}
-//		tr := makeCWRequest(t, req, addr)
-//
-//		assert.Equal(t, tsdb.Response{
-//			Results: map[string]*tsdb.QueryResult{
-//				"A": {
-//					RefId: "A",
-//					Meta: simplejson.NewFromAny(map[string]interface{}{
-//						"rowCount": float64(1),
-//					}),
-//					Tables: []*tsdb.Table{
-//						{
-//							Columns: []tsdb.TableColumn{
-//								{
-//									Text: "text",
-//								},
-//								{
-//									Text: "value",
-//								},
-//							},
-//							Rows: []tsdb.RowValues{
-//								{
-//									"Test_MetricName",
-//									"Test_MetricName",
-//								},
-//							},
-//						},
-//					},
-//				},
-//			},
-//		}, tr)
-//	})
-//}
+func TestQueryCloudWatchMetrics(t *testing.T) {
+	grafDir, cfgPath := testinfra.CreateGrafDir(t)
+	addr, sqlStore := testinfra.StartGrafana(t, grafDir, cfgPath)
+	setUpDatabase(t, sqlStore)
 
-//func TestQueryCloudWatchLogs(t *testing.T) {
-//	grafDir, cfgPath := testinfra.CreateGrafDir(t)
-//	sqlStore := setUpDatabase(t, grafDir)
-//	addr := testinfra.StartGrafana(t, grafDir, cfgPath, sqlStore)
-//
-//	origNewCWLogsClient := cloudwatch.NewCWLogsClient
-//	t.Cleanup(func() {
-//		cloudwatch.NewCWLogsClient = origNewCWLogsClient
-//	})
-//
-//	var client cloudwatch.FakeCWLogsClient
-//	cloudwatch.NewCWLogsClient = func(sess *session.Session) cloudwatchlogsiface.CloudWatchLogsAPI {
-//		return client
-//	}
-//
-//	t.Run("Describe log groups", func(t *testing.T) {
-//		client = cloudwatch.FakeCWLogsClient{}
-//
-//		req := dtos.MetricRequest{
-//			Queries: []*simplejson.Json{
-//				simplejson.NewFromAny(map[string]interface{}{
-//					"type":         "logAction",
-//					"subtype":      "DescribeLogGroups",
-//					"region":       "us-east-1",
-//					"datasourceId": 1,
-//				}),
-//			},
-//		}
-//		tr := makeCWRequest(t, req, addr)
-//
-//		dataFrames := tsdb.NewDecodedDataFrames(data.Frames{
-//			&data.Frame{
-//				Name: "logGroups",
-//				Fields: []*data.Field{
-//					data.NewField("logGroupName", nil, []*string{}),
-//				},
-//				Meta: &data.FrameMeta{
-//					PreferredVisualization: "logs",
-//				},
-//			},
-//		})
-//		// Have to call this so that dataFrames.encoded is non-nil, for the comparison
-//		// In the future we should use gocmp instead and ignore this field
-//		_, err := dataFrames.Encoded()
-//		require.NoError(t, err)
-//		assert.Equal(t, tsdb.Response{
-//			Results: map[string]*tsdb.QueryResult{
-//				"A": {
-//					RefId:      "A",
-//					Dataframes: dataFrames,
-//				},
-//			},
-//		}, tr)
-//	})
-//}
+	origNewCWClient := cloudwatch.NewCWClient
+	t.Cleanup(func() {
+		cloudwatch.NewCWClient = origNewCWClient
+	})
+	var client cloudwatch.FakeCWClient
+	cloudwatch.NewCWClient = func(sess *session.Session) cloudwatchiface.CloudWatchAPI {
+		return client
+	}
 
-func makeCWRequest(t *testing.T, req dtos.MetricRequest, addr string) tsdb.Response {
+	t.Run("Custom metrics", func(t *testing.T) {
+		client = cloudwatch.FakeCWClient{
+			Metrics: []*cwapi.Metric{
+				{
+					MetricName: aws.String("Test_MetricName"),
+					Dimensions: []*cwapi.Dimension{
+						{
+							Name: aws.String("Test_DimensionName"),
+						},
+					},
+				},
+			},
+		}
+
+		req := dtos.MetricRequest{
+			Queries: []*simplejson.Json{
+				simplejson.NewFromAny(map[string]interface{}{
+					"type":         "metricFindQuery",
+					"subtype":      "metrics",
+					"region":       "us-east-1",
+					"namespace":    "custom",
+					"datasourceId": 1,
+				}),
+			},
+		}
+		result := makeCWRequest(t, req, addr)
+
+		dataFrames := data.Frames{
+			&data.Frame{
+				RefID: "A",
+				Fields: []*data.Field{
+					data.NewField("text", nil, []string{"Test_MetricName"}),
+					data.NewField("value", nil, []string{"Test_MetricName"}),
+				},
+				Meta: &data.FrameMeta{
+					Custom: map[string]interface{}{
+						"rowCount": float64(1),
+					},
+				},
+			},
+		}
+
+		expect := backend.NewQueryDataResponse()
+		expect.Responses["A"] = backend.DataResponse{
+			Frames: dataFrames,
+		}
+		assert.Equal(t, *expect, result)
+	})
+}
+
+func TestQueryCloudWatchLogs(t *testing.T) {
+	grafDir, cfgPath := testinfra.CreateGrafDir(t)
+	addr, store := testinfra.StartGrafana(t, grafDir, cfgPath)
+	setUpDatabase(t, store)
+
+	origNewCWLogsClient := cloudwatch.NewCWLogsClient
+	t.Cleanup(func() {
+		cloudwatch.NewCWLogsClient = origNewCWLogsClient
+	})
+
+	var client cloudwatch.FakeCWLogsClient
+	cloudwatch.NewCWLogsClient = func(sess *session.Session) cloudwatchlogsiface.CloudWatchLogsAPI {
+		return client
+	}
+
+	t.Run("Describe log groups", func(t *testing.T) {
+		client = cloudwatch.FakeCWLogsClient{}
+
+		req := dtos.MetricRequest{
+			Queries: []*simplejson.Json{
+				simplejson.NewFromAny(map[string]interface{}{
+					"type":         "logAction",
+					"subtype":      "DescribeLogGroups",
+					"region":       "us-east-1",
+					"datasourceId": 1,
+				}),
+			},
+		}
+		tr := makeCWRequest(t, req, addr)
+
+		dataFrames := data.Frames{
+			&data.Frame{
+				Name:  "logGroups",
+				RefID: "A",
+				Fields: []*data.Field{
+					data.NewField("logGroupName", nil, []*string{}),
+				},
+			},
+		}
+
+		expect := backend.NewQueryDataResponse()
+		expect.Responses["A"] = backend.DataResponse{
+			Frames: dataFrames,
+		}
+		assert.Equal(t, *expect, tr)
+	})
+}
+
+func makeCWRequest(t *testing.T, req dtos.MetricRequest, addr string) backend.QueryDataResponse {
 	t.Helper()
 
 	buf := bytes.Buffer{}
@@ -179,18 +163,17 @@ func makeCWRequest(t *testing.T, req dtos.MetricRequest, addr string) tsdb.Respo
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	var tr tsdb.Response
+	var tr backend.QueryDataResponse
 	err = json.Unmarshal(buf.Bytes(), &tr)
 	require.NoError(t, err)
 
 	return tr
 }
 
-func setUpDatabase(t *testing.T, grafDir string) *sqlstore.SQLStore {
+func setUpDatabase(t *testing.T, store *sqlstore.SQLStore) {
 	t.Helper()
 
-	sqlStore := testinfra.SetUpDatabase(t, grafDir)
-	err := sqlStore.WithDbSession(context.Background(), func(sess *sqlstore.DBSession) error {
+	err := store.WithDbSession(context.Background(), func(sess *sqlstore.DBSession) error {
 		_, err := sess.Insert(&models.DataSource{
 			Id: 1,
 			// This will be the ID of the main org
@@ -205,8 +188,6 @@ func setUpDatabase(t *testing.T, grafDir string) *sqlstore.SQLStore {
 	require.NoError(t, err)
 
 	// Make sure changes are synced with other goroutines
-	err = sqlStore.Sync()
+	err = store.Sync()
 	require.NoError(t, err)
-
-	return sqlStore
 }

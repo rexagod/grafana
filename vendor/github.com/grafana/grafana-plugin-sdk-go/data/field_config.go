@@ -32,6 +32,9 @@ type FieldConfig struct {
 	// Filterable indicates if the Field's data can be filtered by additional calls.
 	Filterable *bool `json:"filterable,omitempty"`
 
+	// Writeable indicates that the datasource knows how to update this value
+	Writeable *bool `json:"writeable,omitempty"`
+
 	// Numeric Options
 	Unit     string       `json:"unit,omitempty"`     // is the string to display to represent the Field's unit, such as "Requests/sec"
 	Decimals *uint16      `json:"decimals,omitempty"` // is the number of decimal places to display
@@ -39,7 +42,7 @@ type FieldConfig struct {
 	Max      *ConfFloat64 `json:"max,omitempty"`      // see Min
 
 	// Convert input values into a display string
-	Mappings []ValueMapping `json:"mappings,omitempty"`
+	Mappings ValueMappings `json:"mappings,omitempty"`
 
 	// Map numeric values to states
 	Thresholds *ThresholdsConfig `json:"thresholds,omitempty"`
@@ -47,9 +50,6 @@ type FieldConfig struct {
 	// Map values to a display color
 	// NOTE: this interface is under development in the frontend... so simple map for now
 	Color map[string]interface{} `json:"color,omitempty"`
-
-	// Used when reducing field values
-	NullValueMode NullValueMode `json:"nullValueMode,omitempty"`
 
 	// The behavior when clicking on a result
 	Links []DataLink `json:"links,omitempty"`
@@ -61,6 +61,9 @@ type FieldConfig struct {
 	Custom map[string]interface{} `json:"custom,omitempty"`
 }
 
+// ExplicitNullValue is the string representation for null
+const ExplicitNullValue = "null"
+
 // ConfFloat64 is a float64. It Marshals float64 values of NaN of Inf
 // to null.
 type ConfFloat64 float64
@@ -68,7 +71,7 @@ type ConfFloat64 float64
 // MarshalJSON fullfills the json.Marshaler interface.
 func (sf *ConfFloat64) MarshalJSON() ([]byte, error) {
 	if sf == nil || math.IsNaN(float64(*sf)) || math.IsInf(float64(*sf), -1) || math.IsInf(float64(*sf), 1) {
-		return []byte(string(NullValueModeNull)), nil
+		return []byte(string(ExplicitNullValue)), nil
 	}
 
 	return []byte(fmt.Sprintf(`%v`, float64(*sf))), nil
@@ -77,7 +80,7 @@ func (sf *ConfFloat64) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON fullfills the json.Unmarshaler interface.
 func (sf *ConfFloat64) UnmarshalJSON(data []byte) error {
 	s := string(data)
-	if s == string(NullValueModeNull) {
+	if s == string(ExplicitNullValue) {
 		return nil
 	}
 	v, err := strconv.ParseFloat(s, 64)
@@ -121,43 +124,6 @@ func (fc *FieldConfig) SetMax(v float64) *FieldConfig {
 func (fc *FieldConfig) SetFilterable(b bool) *FieldConfig {
 	fc.Filterable = &b
 	return fc
-}
-
-// NullValueMode say how the UI should show null values
-type NullValueMode string
-
-const (
-	// NullValueModeNull displays null values
-	NullValueModeNull NullValueMode = "null"
-	// NullValueModeIgnore sets the display to ignore null values
-	NullValueModeIgnore NullValueMode = "connected"
-	// NullValueModeAsZero set the display show null values as zero
-	NullValueModeAsZero NullValueMode = "null as zero"
-)
-
-// MappingType value or range
-type MappingType int8
-
-const (
-	// ValueToText map a value to text
-	ValueToText MappingType = iota + 1
-
-	// RangeToText map a range to text
-	RangeToText
-)
-
-// ValueMapping convert input value to something else
-type ValueMapping struct {
-	ID   int16       `json:"id,omitempty"`
-	Text string      `json:"text,omitempty"`
-	Type MappingType `json:"type,omitempty"`
-
-	// Only valid for MappingType == ValueMap
-	Value string `json:"value,omitempty"`
-
-	// Only valid for MappingType == RangeMap
-	From string `json:"from,omitempty"`
-	To   string `json:"to,omitempty"`
 }
 
 // DataLink define what

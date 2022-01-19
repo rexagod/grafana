@@ -147,7 +147,11 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 			{
 				Use: "encryption",
 				KeyInfo: KeyInfo{
-					Certificate: base64.StdEncoding.EncodeToString(certBytes),
+					X509Data: X509Data{
+						X509Certificates: []X509Certificate{
+							{Data: base64.StdEncoding.EncodeToString(certBytes)},
+						},
+					},
 				},
 				EncryptionMethods: []EncryptionMethod{
 					{Algorithm: "http://www.w3.org/2001/04/xmlenc#aes128-cbc"},
@@ -161,7 +165,11 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 			keyDescriptors = append(keyDescriptors, KeyDescriptor{
 				Use: "signing",
 				KeyInfo: KeyInfo{
-					Certificate: base64.StdEncoding.EncodeToString(certBytes),
+					X509Data: X509Data{
+						X509Certificates: []X509Certificate{
+							{Data: base64.StdEncoding.EncodeToString(certBytes)},
+						},
+					},
 				},
 			})
 		}
@@ -206,15 +214,15 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 // the HTTP-Redirect binding. It returns a URL that we will redirect the user to
 // in order to start the auth process.
 func (sp *ServiceProvider) MakeRedirectAuthenticationRequest(relayState string) (*url.URL, error) {
-	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPRedirectBinding))
+	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPRedirectBinding), HTTPRedirectBinding)
 	if err != nil {
 		return nil, err
 	}
-	return req.Redirect(relayState), nil
+	return req.Redirect(relayState, sp)
 }
 
 // Redirect returns a URL suitable for using the redirect binding with the request
-func (req *AuthnRequest) Redirect(relayState string) *url.URL {
+func (req *AuthnRequest) Redirect(relayState string, sp *ServiceProvider) (*url.URL, error) {
 	w := &bytes.Buffer{}
 	w1 := base64.NewEncoder(base64.StdEncoding, w)
 	w2, _ := flate.NewWriter(w1, 9)
@@ -227,15 +235,35 @@ func (req *AuthnRequest) Redirect(relayState string) *url.URL {
 	w1.Close()
 
 	rv, _ := url.Parse(req.Destination)
-
-	query := rv.Query()
-	query.Set("SAMLRequest", string(w.Bytes()))
-	if relayState != "" {
-		query.Set("RelayState", relayState)
+	// We can't depend on Query().set() as order matters for signing
+	query := rv.RawQuery
+	if len(query) > 0 {
+		query += "&SAMLRequest=" + url.QueryEscape(string(w.Bytes()))
+	} else {
+		query += "SAMLRequest=" + url.QueryEscape(string(w.Bytes()))
 	}
-	rv.RawQuery = query.Encode()
 
-	return rv
+	if relayState != "" {
+		query += "&RelayState=" + relayState
+	}
+	if len(sp.SignatureMethod) > 0 {
+		query += "&SigAlg=" + url.QueryEscape(sp.SignatureMethod)
+		signingContext, err := GetSigningContext(sp)
+
+		if err != nil {
+			return nil, err
+		}
+
+		sig, err := signingContext.SignString(query)
+		if err != nil {
+			return nil, err
+		}
+		query += "&Signature=" + url.QueryEscape(base64.StdEncoding.EncodeToString(sig))
+	}
+
+	rv.RawQuery = query
+
+	return rv, nil
 }
 
 // GetSSOBindingLocation returns URL for the IDP's Single Sign On Service binding
@@ -268,22 +296,17 @@ func (sp *ServiceProvider) GetSLOBindingLocation(binding string) string {
 // signed by the IDP in PEM format, or nil if no such certificate is found.
 func (sp *ServiceProvider) getIDPSigningCerts() ([]*x509.Certificate, error) {
 	var certStrs []string
+
+	// We need to include non-empty certs where the "use" attribute is
+	// either set to "signing" or is missing
 	for _, idpSSODescriptor := range sp.IDPMetadata.IDPSSODescriptors {
 		for _, keyDescriptor := range idpSSODescriptor.KeyDescriptors {
-			if keyDescriptor.Use == "signing" {
-				certStrs = append(certStrs, keyDescriptor.KeyInfo.Certificate)
-			}
-		}
-	}
-
-	// If there are no explicitly signing certs, just return the first
-	// non-empty cert we find.
-	if len(certStrs) == 0 {
-		for _, idpSSODescriptor := range sp.IDPMetadata.IDPSSODescriptors {
-			for _, keyDescriptor := range idpSSODescriptor.KeyDescriptors {
-				if keyDescriptor.Use == "" && keyDescriptor.KeyInfo.Certificate != "" {
-					certStrs = append(certStrs, keyDescriptor.KeyInfo.Certificate)
-					break
+			if len(keyDescriptor.KeyInfo.X509Data.X509Certificates) != 0 {
+				switch keyDescriptor.Use {
+				case "", "signing":
+					for _, certificate := range keyDescriptor.KeyInfo.X509Data.X509Certificates {
+						certStrs = append(certStrs, certificate.Data)
+					}
 				}
 			}
 		}
@@ -314,8 +337,9 @@ func (sp *ServiceProvider) getIDPSigningCerts() ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
-// MakeAuthenticationRequest produces a new AuthnRequest object for idpURL.
-func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnRequest, error) {
+// MakeAuthenticationRequest produces a new AuthnRequest object to send to the idpURL
+// that uses the specified binding (HTTPRedirectBinding or HTTPPostBinding)
+func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string, binding string) (*AuthnRequest, error) {
 
 	allowCreate := true
 	nameIDFormat := sp.nameIDFormat()
@@ -339,7 +363,8 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		},
 		ForceAuthn: sp.ForceAuthn,
 	}
-	if len(sp.SignatureMethod) > 0 {
+	// We don't need to sign the XML document if the IDP uses HTTP-Redirect binding
+	if len(sp.SignatureMethod) > 0 && binding == HTTPPostBinding {
 		if err := sp.SignAuthnRequest(&req); err != nil {
 			return nil, err
 		}
@@ -347,8 +372,8 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 	return &req, nil
 }
 
-// SignAuthnRequest adds the `Signature` element to the `AuthnRequest`.
-func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
+// GetSigningContext returns a dsig.SigningContext initialized based on the Service Provider's configuration
+func GetSigningContext(sp *ServiceProvider) (*dsig.SigningContext, error) {
 	keyPair := tls.Certificate{
 		Certificate: [][]byte{sp.Certificate.Raw},
 		PrivateKey:  sp.Key,
@@ -363,15 +388,25 @@ func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
 	if sp.SignatureMethod != dsig.RSASHA1SignatureMethod &&
 		sp.SignatureMethod != dsig.RSASHA256SignatureMethod &&
 		sp.SignatureMethod != dsig.RSASHA512SignatureMethod {
-		return fmt.Errorf("invalid signing method %s", sp.SignatureMethod)
+		return nil, fmt.Errorf("invalid signing method %s", sp.SignatureMethod)
 	}
 	signatureMethod := sp.SignatureMethod
 	signingContext := dsig.NewDefaultSigningContext(keyStore)
 	signingContext.Canonicalizer = dsig.MakeC14N10ExclusiveCanonicalizerWithPrefixList(canonicalizerPrefixList)
 	if err := signingContext.SetSignatureMethod(signatureMethod); err != nil {
-		return err
+		return nil, err
 	}
 
+	return signingContext, nil
+}
+
+// SignAuthnRequest adds the `Signature` element to the `AuthnRequest`.
+func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
+
+	signingContext, err := GetSigningContext(sp)
+	if err != nil {
+		return err
+	}
 	assertionEl := req.Element()
 
 	signedRequestEl, err := signingContext.SignEnveloped(assertionEl)
@@ -388,7 +423,7 @@ func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
 // the HTTP-POST binding. It returns HTML text representing an HTML form that
 // can be sent presented to a browser to initiate the login process.
 func (sp *ServiceProvider) MakePostAuthenticationRequest(relayState string) ([]byte, error) {
-	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPPostBinding))
+	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPPostBinding), HTTPPostBinding)
 	if err != nil {
 		return nil, err
 	}

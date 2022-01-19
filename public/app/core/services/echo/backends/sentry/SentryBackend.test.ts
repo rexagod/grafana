@@ -13,7 +13,10 @@ import { GrafanaEdition } from '@grafana/data/src/types/config';
 jest.mock('@sentry/browser');
 
 describe('SentryEchoBackend', () => {
-  beforeEach(() => jest.resetAllMocks());
+  beforeEach(() => {
+    jest.resetAllMocks();
+    window.fetch = jest.fn();
+  });
 
   const buildInfo: BuildInfo = {
     version: '1.0',
@@ -35,6 +38,7 @@ describe('SentryEchoBackend', () => {
     user: {
       email: 'darth.vader@sith.glx',
       id: 504,
+      orgId: 1,
     },
   };
 
@@ -65,6 +69,11 @@ describe('SentryEchoBackend', () => {
       dsn: options.dsn,
       sampleRate: options.sampleRate,
       transport: EchoSrvTransport,
+      ignoreErrors: [
+        'ResizeObserver loop limit exceeded',
+        'ResizeObserver loop completed',
+        'Non-Error exception captured with keys',
+      ],
     });
     expect(sentrySetUser).toHaveBeenCalledWith({
       email: options.user?.email,

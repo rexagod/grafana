@@ -28,11 +28,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
@@ -73,9 +74,18 @@ func (p *page) reset() {
 	p.flushed = 0
 }
 
+// SegmentFile represents the underlying file used to store a segment.
+type SegmentFile interface {
+	Stat() (os.FileInfo, error)
+	Sync() error
+	io.Writer
+	io.Reader
+	io.Closer
+}
+
 // Segment represents a segment file.
 type Segment struct {
-	*os.File
+	SegmentFile
 	dir string
 	i   int
 }
@@ -129,7 +139,7 @@ func OpenWriteSegment(logger log.Logger, dir string, k int) (*Segment, error) {
 			return nil, errors.Wrap(err, "zero-pad torn page")
 		}
 	}
-	return &Segment{File: f, i: k, dir: dir}, nil
+	return &Segment{SegmentFile: f, i: k, dir: dir}, nil
 }
 
 // CreateSegment creates a new segment k in dir.
@@ -138,7 +148,7 @@ func CreateSegment(dir string, k int) (*Segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Segment{File: f, i: k, dir: dir}, nil
+	return &Segment{SegmentFile: f, i: k, dir: dir}, nil
 }
 
 // OpenReadSegment opens the segment with the given filename.
@@ -151,7 +161,7 @@ func OpenReadSegment(fn string) (*Segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Segment{File: f, i: k, dir: filepath.Dir(fn)}, nil
+	return &Segment{SegmentFile: f, i: k, dir: filepath.Dir(fn)}, nil
 }
 
 // WAL is a write ahead log that stores records in segment files.
@@ -516,8 +526,10 @@ func (w *WAL) flushPage(clear bool) error {
 	if clear {
 		p.alloc = pageSize // Write till end of page.
 	}
+
 	n, err := w.segment.Write(p.buf[p.flushed:p.alloc])
 	if err != nil {
+		p.flushed += n
 		return err
 	}
 	p.flushed += n
@@ -601,6 +613,24 @@ func (w *WAL) log(rec []byte, final bool) error {
 			return err
 		}
 	}
+
+	// Compress the record before calculating if a new segment is needed.
+	compressed := false
+	if w.compress &&
+		len(rec) > 0 &&
+		// If MaxEncodedLen is less than 0 the record is too large to be compressed.
+		snappy.MaxEncodedLen(len(rec)) >= 0 {
+		// The snappy library uses `len` to calculate if we need a new buffer.
+		// In order to allocate as few buffers as possible make the length
+		// equal to the capacity.
+		w.snappyBuf = w.snappyBuf[:cap(w.snappyBuf)]
+		w.snappyBuf = snappy.Encode(w.snappyBuf, rec)
+		if len(w.snappyBuf) < len(rec) {
+			rec = w.snappyBuf
+			compressed = true
+		}
+	}
+
 	// If the record is too big to fit within the active page in the current
 	// segment, terminate the active segment and advance to the next one.
 	// This ensures that records do not cross segment boundaries.
@@ -610,19 +640,6 @@ func (w *WAL) log(rec []byte, final bool) error {
 	if len(rec) > left {
 		if err := w.nextSegment(); err != nil {
 			return err
-		}
-	}
-
-	compressed := false
-	if w.compress && len(rec) > 0 {
-		// The snappy library uses `len` to calculate if we need a new buffer.
-		// In order to allocate as few buffers as possible make the length
-		// equal to the capacity.
-		w.snappyBuf = w.snappyBuf[:cap(w.snappyBuf)]
-		w.snappyBuf = snappy.Encode(w.snappyBuf, rec)
-		if len(w.snappyBuf) < len(rec) {
-			rec = w.snappyBuf
-			compressed = true
 		}
 	}
 
@@ -663,6 +680,9 @@ func (w *WAL) log(rec []byte, final bool) error {
 
 		if w.page.full() {
 			if err := w.flushPage(true); err != nil {
+				// TODO When the flushing fails at this point and the record has not been
+				// fully written to the buffer, we end up with a corrupted WAL because some part of the
+				// record have been written to the buffer, while the rest of the record will be discarded.
 				return err
 			}
 		}
@@ -677,6 +697,22 @@ func (w *WAL) log(rec []byte, final bool) error {
 	}
 
 	return nil
+}
+
+// LastSegmentAndOffset returns the last segment number of the WAL
+// and the offset in that file upto which the segment has been filled.
+func (w *WAL) LastSegmentAndOffset() (seg, offset int, err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	_, seg, err = Segments(w.Dir())
+	if err != nil {
+		return
+	}
+
+	offset = (w.donePages * pageSize) + w.page.alloc
+
+	return
 }
 
 // Truncate drops all segments before i.
@@ -704,7 +740,7 @@ func (w *WAL) Truncate(i int) (err error) {
 
 func (w *WAL) fsync(f *Segment) error {
 	start := time.Now()
-	err := f.File.Sync()
+	err := f.Sync()
 	w.metrics.fsyncDuration.Observe(time.Since(start).Seconds())
 	return err
 }
@@ -845,6 +881,21 @@ func NewSegmentBufReader(segs ...*Segment) *segmentBufReader {
 		buf:  bufio.NewReaderSize(segs[0], 16*pageSize),
 		segs: segs,
 	}
+}
+
+// nolint:golint
+func NewSegmentBufReaderWithOffset(offset int, segs ...*Segment) (sbr *segmentBufReader, err error) {
+	if offset == 0 {
+		return NewSegmentBufReader(segs...), nil
+	}
+	sbr = &segmentBufReader{
+		buf:  bufio.NewReaderSize(segs[0], 16*pageSize),
+		segs: segs,
+	}
+	if offset > 0 {
+		_, err = sbr.buf.Discard(offset)
+	}
+	return sbr, err
 }
 
 func (r *segmentBufReader) Close() (err error) {

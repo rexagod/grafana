@@ -7,6 +7,7 @@ import (
 
 	"github.com/centrifugal/centrifuge/internal/cancelctx"
 
+	"github.com/centrifugal/protocol"
 	"github.com/gorilla/websocket"
 	"github.com/igm/sockjs-go/v3/sockjs"
 )
@@ -40,18 +41,43 @@ func (t *sockjsTransport) Protocol() ProtocolType {
 	return ProtocolTypeJSON
 }
 
-// Encoding returns transport encoding.
-func (t *sockjsTransport) Encoding() EncodingType {
-	return EncodingTypeJSON
+// Unidirectional returns whether transport is unidirectional.
+func (t *sockjsTransport) Unidirectional() bool {
+	return false
+}
+
+// DisabledPushFlags ...
+func (t *sockjsTransport) DisabledPushFlags() uint64 {
+	if !t.Unidirectional() {
+		return PushFlagDisconnect
+	}
+	return 0
 }
 
 // Write data to transport.
-func (t *sockjsTransport) Write(data []byte) error {
+func (t *sockjsTransport) Write(message []byte) error {
 	select {
 	case <-t.closeCh:
 		return nil
 	default:
-		return t.session.Send(string(data))
+		// No need to use protocol encoders here since
+		// SockJS only supports JSON.
+		return t.session.Send(string(message))
+	}
+}
+
+// Write data to transport.
+func (t *sockjsTransport) WriteMany(messages ...[]byte) error {
+	select {
+	case <-t.closeCh:
+		return nil
+	default:
+		encoder := protocol.GetDataEncoder(ProtocolTypeJSON.toProto())
+		defer protocol.PutDataEncoder(ProtocolTypeJSON.toProto(), encoder)
+		for i := range messages {
+			_ = encoder.Encode(messages[i])
+		}
+		return t.session.Send(string(encoder.Finish()))
 	}
 }
 
@@ -78,7 +104,7 @@ type SockjsConfig struct {
 	// HandlerPrefix sets prefix for SockJS handler endpoint path.
 	HandlerPrefix string
 
-	// URL is URL address to SockJS client javascript library.
+	// URL is an address to SockJS client javascript library.
 	URL string
 
 	// HeartbeatDelay sets how often to send heartbeat frames to clients.
@@ -89,27 +115,33 @@ type SockjsConfig struct {
 	CheckOrigin func(*http.Request) bool
 
 	// WebsocketCheckOrigin allows to set custom CheckOrigin func for underlying
-	// gorilla Websocket based Upgrader.
+	// Gorilla Websocket based websocket.Upgrader.
 	WebsocketCheckOrigin func(*http.Request) bool
 
-	// WebsocketReadBufferSize is a parameter that is used for raw websocket Upgrader.
+	// WebsocketReadBufferSize is a parameter that is used for raw websocket websocket.Upgrader.
 	// If set to zero reasonable default value will be used.
 	WebsocketReadBufferSize int
 
-	// WebsocketWriteBufferSize is a parameter that is used for raw websocket Upgrader.
+	// WebsocketWriteBufferSize is a parameter that is used for raw websocket websocket.Upgrader.
 	// If set to zero reasonable default value will be used.
 	WebsocketWriteBufferSize int
 
 	// WebsocketUseWriteBufferPool enables using buffer pool for writes in Websocket transport.
 	WebsocketUseWriteBufferPool bool
 
-	// WriteTimeout is maximum time of write message operation.
+	// WebsocketWriteTimeout is maximum time of write message operation.
 	// Slow client will be disconnected.
 	// By default DefaultWebsocketWriteTimeout will be used.
 	WebsocketWriteTimeout time.Duration
 }
 
-// SockjsHandler accepts SockJS connections.
+// SockjsHandler accepts SockJS connections. SockJS has a bunch of fallback
+// transports when WebSocket connection is not supported. It comes with additional
+// costs though: small protocol framing overhead, lack of binary support, more
+// goroutines per connection, and you need to use sticky session mechanism on
+// your load balancer in case you are using HTTP-based SockJS fallbacks and have
+// more than one Centrifuge Node on a backend (so SockJS to be able to emulate
+// bidirectional protocol). So if you can afford it - use WebsocketHandler only.
 type SockjsHandler struct {
 	node    *Node
 	config  SockjsConfig
@@ -122,8 +154,12 @@ func NewSockjsHandler(n *Node, c SockjsConfig) *SockjsHandler {
 	wsUpgrader := &websocket.Upgrader{
 		ReadBufferSize:  c.WebsocketReadBufferSize,
 		WriteBufferSize: c.WebsocketWriteBufferSize,
-		CheckOrigin:     c.WebsocketCheckOrigin,
 		Error:           func(w http.ResponseWriter, r *http.Request, status int, reason error) {},
+	}
+	if c.WebsocketCheckOrigin != nil {
+		wsUpgrader.CheckOrigin = c.WebsocketCheckOrigin
+	} else {
+		wsUpgrader.CheckOrigin = sameHostOriginCheck(n)
 	}
 	if c.WebsocketUseWriteBufferPool {
 		wsUpgrader.WriteBufferPool = writeBufferPool
@@ -136,7 +172,11 @@ func NewSockjsHandler(n *Node, c SockjsConfig) *SockjsHandler {
 	// based SockJS transports, otherwise SockJS will raise error
 	// about version mismatch.
 	options.SockJSURL = c.URL
-	options.CheckOrigin = c.CheckOrigin
+	if c.CheckOrigin != nil {
+		options.CheckOrigin = c.CheckOrigin
+	} else {
+		options.CheckOrigin = sameHostOriginCheck(n)
+	}
 
 	options.HeartbeatDelay = c.HeartbeatDelay
 	wsWriteTimeout := c.WebsocketWriteTimeout

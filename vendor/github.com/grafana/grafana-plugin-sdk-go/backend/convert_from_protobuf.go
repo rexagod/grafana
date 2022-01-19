@@ -202,3 +202,52 @@ func (f ConvertFromProtobuf) CollectMetricsResponse(protoResp *pluginv2.CollectM
 		PrometheusMetrics: prometheusMetrics,
 	}
 }
+
+// SubscribeStreamRequest ...
+func (f ConvertFromProtobuf) SubscribeStreamRequest(protoReq *pluginv2.SubscribeStreamRequest) *SubscribeStreamRequest {
+	return &SubscribeStreamRequest{
+		PluginContext: f.PluginContext(protoReq.PluginContext),
+		Path:          protoReq.GetPath(),
+	}
+}
+
+// SubscribeStreamResponse ...
+func (f ConvertFromProtobuf) SubscribeStreamResponse(protoReq *pluginv2.SubscribeStreamResponse) *SubscribeStreamResponse {
+	return &SubscribeStreamResponse{
+		Status: SubscribeStreamStatus(protoReq.GetStatus()),
+		InitialData: &InitialData{
+			data: protoReq.Data,
+		},
+	}
+}
+
+// PublishStreamRequest ...
+func (f ConvertFromProtobuf) PublishStreamRequest(protoReq *pluginv2.PublishStreamRequest) *PublishStreamRequest {
+	return &PublishStreamRequest{
+		PluginContext: f.PluginContext(protoReq.PluginContext),
+		Path:          protoReq.GetPath(),
+	}
+}
+
+// PublishStreamResponse ...
+func (f ConvertFromProtobuf) PublishStreamResponse(protoReq *pluginv2.PublishStreamResponse) *PublishStreamResponse {
+	return &PublishStreamResponse{
+		Status: PublishStreamStatus(protoReq.GetStatus()),
+		Data:   protoReq.GetData(),
+	}
+}
+
+// RunStreamRequest ...
+func (f ConvertFromProtobuf) RunStreamRequest(protoReq *pluginv2.RunStreamRequest) *RunStreamRequest {
+	return &RunStreamRequest{
+		PluginContext: f.PluginContext(protoReq.PluginContext),
+		Path:          protoReq.GetPath(),
+	}
+}
+
+// StreamPacket ...
+func (f ConvertFromProtobuf) StreamPacket(protoReq *pluginv2.StreamPacket) *StreamPacket {
+	return &StreamPacket{
+		Data: protoReq.GetData(),
+	}
+}

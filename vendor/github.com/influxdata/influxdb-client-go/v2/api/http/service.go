@@ -1,4 +1,4 @@
-// Copyright 2020 InfluxData, Inc. All rights reserved.
+// Copyright 2020-2021 InfluxData, Inc. All rights reserved.
 // Use of this source code is governed by MIT
 // license that can be found in the LICENSE file.
 
@@ -55,7 +55,7 @@ type service struct {
 	serverAPIURL  string
 	serverURL     string
 	authorization string
-	client        *http.Client
+	client        Doer
 }
 
 // NewService creates instance of http Service with given parameters
@@ -72,7 +72,7 @@ func NewService(serverURL, authorization string, httpOptions *Options) Service {
 		serverAPIURL:  serverAPIURL,
 		serverURL:     serverURL,
 		authorization: authorization,
-		client:        httpOptions.HTTPClient(),
+		client:        httpOptions.HTTPDoer(),
 	}
 }
 
@@ -111,7 +111,7 @@ func (s *service) DoHTTPRequest(req *http.Request, requestCallback RequestCallba
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return s.handleHTTPError(resp)
+		return s.parseHTTPError(resp)
 	}
 	if responseCallback != nil {
 		err := responseCallback(resp)
@@ -127,14 +127,16 @@ func (s *service) DoHTTPRequestWithResponse(req *http.Request, requestCallback R
 	if len(s.authorization) > 0 {
 		req.Header.Set("Authorization", s.authorization)
 	}
-	req.Header.Set("User-Agent", http2.UserAgent)
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", http2.UserAgent)
+	}
 	if requestCallback != nil {
 		requestCallback(req)
 	}
 	return s.client.Do(req)
 }
 
-func (s *service) handleHTTPError(r *http.Response) *Error {
+func (s *service) parseHTTPError(r *http.Response) *Error {
 	// successful status code range
 	if r.StatusCode >= 200 && r.StatusCode < 300 {
 		return nil

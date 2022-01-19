@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
 import { action } from '@storybook/addon-actions';
-import { SegmentInput, Icon } from '@grafana/ui';
+import { SegmentInput, Icon, SegmentSection } from '@grafana/ui';
 
 const SegmentFrame = ({ children }: any) => (
   <>
-    <div className="gf-form-inline">
-      <div className="gf-form">
-        <span className="gf-form-label width-8 query-keyword">Segment Name</span>
-      </div>
-      {children}
-    </div>
+    <SegmentSection label="Segment Name">{children}</SegmentSection>
   </>
 );
 
@@ -58,23 +53,6 @@ export const BasicInputWithHtmlAttributes = () => {
         id="segment-input"
         value={value}
         onChange={(text) => {
-          setValue(text as string);
-          action('Segment value changed')(text);
-        }}
-      />
-    </SegmentFrame>
-  );
-};
-
-export const BasicInputWithHtmlAttributes = () => {
-  const [value, setValue] = useState('some text');
-  return (
-    <SegmentFrame>
-      <SegmentInput
-        data-testid="segment-input-test"
-        id="segment-input"
-        value={value}
-        onChange={text => {
           setValue(text as string);
           action('Segment value changed')(text);
         }}

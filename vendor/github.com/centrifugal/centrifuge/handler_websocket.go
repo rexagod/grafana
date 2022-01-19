@@ -1,13 +1,17 @@
 package centrifuge
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/centrifugal/centrifuge/internal/cancelctx"
 	"github.com/centrifugal/centrifuge/internal/timers"
 
+	"github.com/centrifugal/protocol"
 	"github.com/gorilla/websocket"
 )
 
@@ -28,7 +32,6 @@ type websocketTransport struct {
 }
 
 type websocketTransportOptions struct {
-	encType            EncodingType
 	protoType          ProtocolType
 	pingInterval       time.Duration
 	writeTimeout       time.Duration
@@ -54,9 +57,9 @@ func (t *websocketTransport) ping() {
 		return
 	default:
 		deadline := time.Now().Add(t.opts.pingInterval / 2)
-		err := t.conn.WriteControl(websocket.PingMessage, []byte("ping"), deadline)
+		err := t.conn.WriteControl(websocket.PingMessage, nil, deadline)
 		if err != nil {
-			_ = t.Close(DisconnectServerError)
+			_ = t.Close(DisconnectWriteError)
 			return
 		}
 		t.addPing()
@@ -83,38 +86,68 @@ func (t *websocketTransport) Protocol() ProtocolType {
 	return t.opts.protoType
 }
 
-// Encoding returns transport encoding.
-func (t *websocketTransport) Encoding() EncodingType {
-	return t.opts.encType
+// Unidirectional returns whether transport is unidirectional.
+func (t *websocketTransport) Unidirectional() bool {
+	return false
+}
+
+// DisabledPushFlags ...
+func (t *websocketTransport) DisabledPushFlags() uint64 {
+	return PushFlagDisconnect
+}
+
+func (t *websocketTransport) writeData(data []byte) error {
+	if t.opts.compressionMinSize > 0 {
+		t.conn.EnableWriteCompression(len(data) > t.opts.compressionMinSize)
+	}
+	var messageType = websocket.TextMessage
+	if t.Protocol() == ProtocolTypeProtobuf {
+		messageType = websocket.BinaryMessage
+	}
+	if t.opts.writeTimeout > 0 {
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.opts.writeTimeout))
+	}
+	err := t.conn.WriteMessage(messageType, data)
+	if err != nil {
+		return err
+	}
+	if t.opts.writeTimeout > 0 {
+		_ = t.conn.SetWriteDeadline(time.Time{})
+	}
+	return nil
 }
 
 // Write data to transport.
-func (t *websocketTransport) Write(data []byte) error {
+func (t *websocketTransport) Write(message []byte) error {
 	select {
 	case <-t.closeCh:
 		return nil
 	default:
-		if t.opts.compressionMinSize > 0 {
-			t.conn.EnableWriteCompression(len(data) > t.opts.compressionMinSize)
+		protoType := t.Protocol().toProto()
+		if protoType == protocol.TypeJSON {
+			// Fast path for one JSON message.
+			return t.writeData(message)
 		}
-		if t.opts.writeTimeout > 0 {
-			_ = t.conn.SetWriteDeadline(time.Now().Add(t.opts.writeTimeout))
-		}
+		encoder := protocol.GetDataEncoder(protoType)
+		defer protocol.PutDataEncoder(protoType, encoder)
+		_ = encoder.Encode(message)
+		return t.writeData(encoder.Finish())
+	}
+}
 
-		var messageType = websocket.TextMessage
-		if t.Protocol() == ProtocolTypeProtobuf {
-			messageType = websocket.BinaryMessage
-		}
-
-		err := t.conn.WriteMessage(messageType, data)
-		if err != nil {
-			return err
-		}
-
-		if t.opts.writeTimeout > 0 {
-			_ = t.conn.SetWriteDeadline(time.Time{})
-		}
+// WriteMany data to transport.
+func (t *websocketTransport) WriteMany(messages ...[]byte) error {
+	select {
+	case <-t.closeCh:
 		return nil
+	default:
+		protoType := t.Protocol().toProto()
+		encoder := protocol.GetDataEncoder(protoType)
+		defer protocol.PutDataEncoder(protoType, encoder)
+		for i := range messages {
+			_ = encoder.Encode(messages[i])
+		}
+		return t.writeData(encoder.Finish())
 	}
 }
 
@@ -188,7 +221,8 @@ type WebsocketConfig struct {
 	MessageSizeLimit int
 
 	// CheckOrigin func to provide custom origin check logic.
-	// nil means allow all origins.
+	// nil means that sameHostOriginCheck function will be used which
+	// expects Origin host to match request Host.
 	CheckOrigin func(r *http.Request) bool
 
 	// PingInterval sets interval server will send ping messages to clients.
@@ -210,7 +244,9 @@ type WebsocketConfig struct {
 	UseWriteBufferPool bool
 }
 
-// WebsocketHandler handles websocket client connections.
+// WebsocketHandler handles WebSocket client connections. WebSocket protocol
+// is a bidirectional connection between a client an a server for low-latency
+// communication.
 type WebsocketHandler struct {
 	node    *Node
 	upgrade *websocket.Upgrader
@@ -224,6 +260,7 @@ func NewWebsocketHandler(n *Node, c WebsocketConfig) *WebsocketHandler {
 	upgrade := &websocket.Upgrader{
 		ReadBufferSize:    c.ReadBufferSize,
 		EnableCompression: c.Compression,
+		Subprotocols:      []string{"centrifuge-protobuf"},
 	}
 	if c.UseWriteBufferPool {
 		upgrade.WriteBufferPool = writeBufferPool
@@ -233,10 +270,7 @@ func NewWebsocketHandler(n *Node, c WebsocketConfig) *WebsocketHandler {
 	if c.CheckOrigin != nil {
 		upgrade.CheckOrigin = c.CheckOrigin
 	} else {
-		upgrade.CheckOrigin = func(r *http.Request) bool {
-			// Allow all connections.
-			return true
-		}
+		upgrade.CheckOrigin = sameHostOriginCheck(n)
 	}
 	return &WebsocketHandler{
 		node:    n,
@@ -290,14 +324,16 @@ func (s *WebsocketHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	var protocol = ProtocolTypeJSON
-	if r.URL.Query().Get("format") == "protobuf" || r.URL.Query().Get("protocol") == "protobuf" {
-		protocol = ProtocolTypeProtobuf
-	}
+	var protoType = ProtocolTypeJSON
 
-	var enc = EncodingTypeJSON
-	if r.URL.Query().Get("encoding") == "binary" {
-		enc = EncodingTypeBinary
+	subProtocol := conn.Subprotocol()
+	if subProtocol == "centrifuge-protobuf" {
+		protoType = ProtocolTypeProtobuf
+	} else {
+		// This is a deprecated way to get a protocol type.
+		if r.URL.Query().Get("format") == "protobuf" || r.URL.Query().Get("protocol") == "protobuf" {
+			protoType = ProtocolTypeProtobuf
+		}
 	}
 
 	// Separate goroutine for better GC of caller's data.
@@ -306,8 +342,7 @@ func (s *WebsocketHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			pingInterval:       pingInterval,
 			writeTimeout:       writeTimeout,
 			compressionMinSize: compressionMinSize,
-			encType:            enc,
-			protoType:          protocol,
+			protoType:          protoType,
 		}
 
 		graceCh := make(chan struct{})
@@ -358,4 +393,30 @@ func (s *WebsocketHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+}
+
+func sameHostOriginCheck(n *Node) func(r *http.Request) bool {
+	return func(r *http.Request) bool {
+		err := checkSameHost(r)
+		if err != nil {
+			n.logger.log(newLogEntry(LogLevelInfo, "origin check failure", map[string]interface{}{"error": err.Error()}))
+			return false
+		}
+		return true
+	}
+}
+
+func checkSameHost(r *http.Request) error {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return nil
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return fmt.Errorf("failed to parse Origin header %q: %w", origin, err)
+	}
+	if strings.EqualFold(r.Host, u.Host) {
+		return nil
+	}
+	return fmt.Errorf("request Origin %q is not authorized for Host %q", origin, r.Host)
 }

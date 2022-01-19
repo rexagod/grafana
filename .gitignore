@@ -6,18 +6,30 @@ coverage/
 awsconfig
 /.awcache
 /dist
+public/dist/tsconfig.tsbuildinfo
 # [OCP] Keep the next 4 lines commented because we have to store the compiled
 # JS assets and Go dependencies into Git.
-#/public/build
-#/public/views/index.html
-#/public/views/error.html
-#vendor/
+# /public/build
+# /public/views/index.html
+# /public/views/error.html
+# vendor/
 /emails/dist
 /reports
 /e2e/tmp
-.yarnrc
-.yarn/
 /docs/menu.yaml
+/requests
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+# we temporarily commit this file because yarn downloading it
+# somehow produces different checksum values
+!.yarn/cache/pa11y-ci-https-1e9675e9e1-668c9119bd.zip
+.pnp.*
 
 # Enterprise emails
 /emails/templates/enterprise_*
@@ -51,8 +63,10 @@ public/css/*.min.css
 *.tmp
 .DS_Store
 .vscode/
+!.vscode/launch.json
 .vs/
 .eslintcache
+.stylelintcache
 
 /data/*
 /bin/*
@@ -75,6 +89,8 @@ profile.cov
 /pkg/cmd/grafana-server/grafana-server
 /pkg/cmd/grafana-server/debug
 /pkg/extensions/*
+/pkg/server/wireexts_enterprise.go
+/pkg/cmd/grafana-cli/runner/wireexts_enterprise.go
 !/pkg/extensions/main.go
 /public/app/extensions
 debug.test
@@ -82,6 +98,7 @@ debug.test
 /packaging/**/*.rpm
 /packaging/**/*.deb
 /packaging/**/*.tar.gz
+/packaging/**/*.tar.gz.sha256
 
 # Ignore OSX indexing
 .DS_Store
@@ -122,8 +139,17 @@ compilation-stats.json
 !/e2e/**/screenshots/expected/*
 /e2e/**/videos/*
 
+# a11y tests
+/pa11y-ci-results.json
+/pa11y-ci-report
+
 # report dumping the whole system env
 /report.*.json
 
 # auto generated frontend docs
 /docs/sources/packages_api
+
+# auto generated Go files
+# *_gen.go
+
+deployment_tools_config.json

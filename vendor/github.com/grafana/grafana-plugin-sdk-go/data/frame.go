@@ -10,14 +10,17 @@
 package data
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -35,39 +38,31 @@ type Frame struct {
 	// All Fields must be of the same the length when marshalling the Frame for transmission.
 	Fields []*Field
 
-	// RefID is a property that can be set to match a Frame to its orginating query.
+	// RefID is a property that can be set to match a Frame to its originating query.
 	RefID string
 
 	// Meta is metadata about the Frame, and includes space for custom metadata.
 	Meta *FrameMeta
 }
 
-// UnmarshalJSON uses the `UnmarshalArrowFrame` function to unmarshal this type from JSON.
+// UnmarshalJSON allows unmarshalling Frame from JSON.
 func (f *Frame) UnmarshalJSON(b []byte) error {
-	arrow := []byte{}
-
-	if err := json.Unmarshal(b, &arrow); err != nil {
-		return err
-	}
-
-	frame, err := UnmarshalArrowFrame(arrow)
-	if err != nil {
-		return err
-	}
-
-	*f = *frame
-
-	return nil
+	iter := jsoniter.ParseBytes(jsoniter.ConfigDefault, b)
+	return readDataFrameJSON(f, iter)
 }
 
-// MarshalJSON uses the `MarshalArrow` function to marshal this type to JSON.
+// MarshalJSON marshals Frame to JSON.
 func (f *Frame) MarshalJSON() ([]byte, error) {
-	arrow, err := f.MarshalArrow()
-	if err != nil {
-		return nil, err
+	cfg := jsoniter.ConfigCompatibleWithStandardLibrary
+	stream := cfg.BorrowStream(nil)
+	defer cfg.ReturnStream(stream)
+
+	writeDataFrame(f, stream, true, true)
+	if stream.Error != nil {
+		return nil, stream.Error
 	}
 
-	return json.Marshal(arrow)
+	return append([]byte(nil), stream.Buffer()...), nil
 }
 
 // Frames is a slice of Frame pointers.
@@ -77,7 +72,7 @@ type Frames []*Frame
 // AppendRow adds a new row to the Frame by appending to each element of vals to
 // the corresponding Field in the data.
 // The Frame's Fields must be initialized or AppendRow will panic.
-// The number of arguments must match the number of Fields in the Frame and each type must coorespond
+// The number of arguments must match the number of Fields in the Frame and each type must correspond
 // to the Field type or AppendRow will panic.
 func (f *Frame) AppendRow(vals ...interface{}) {
 	for i, v := range vals {
@@ -153,10 +148,10 @@ func (f *Frame) EmptyCopy() *Frame {
 	}
 
 	for _, field := range f.Fields {
-		copy := NewFieldFromFieldType(field.Type(), 0)
-		copy.Name = field.Name
-		copy.Labels = field.Labels.Copy()
-		newFrame.Fields = append(newFrame.Fields, copy)
+		fieldCopy := NewFieldFromFieldType(field.Type(), 0)
+		fieldCopy.Name = field.Name
+		fieldCopy.Labels = field.Labels.Copy()
+		newFrame.Fields = append(newFrame.Fields, fieldCopy)
 	}
 	return newFrame
 }
@@ -176,7 +171,7 @@ func NewFrameOfFieldTypes(name string, fieldLen int, fTypes ...FieldType) *Frame
 
 // TypeIndices returns a slice of Field index positions for the given fTypes.
 func (f *Frame) TypeIndices(fTypes ...FieldType) []int {
-	indices := []int{}
+	var indices []int
 	if f.Fields == nil {
 		return indices
 	}
@@ -380,8 +375,34 @@ func FrameTestCompareOptions() []cmp.Option {
 			x == y
 	})
 
+	times := cmp.Comparer(func(x, y time.Time) bool {
+		if !x.Equal(y) {
+			// Check that the millisecond precision is the same.
+			// Avoids problems like:
+			// - s"1970-04-14 21:59:59.254740991 -0800 PST",
+			// + s"1970-04-14 21:59:59.254 -0800 PST",
+			xMS := x.UnixNano() / int64(time.Millisecond)
+			yMS := y.UnixNano() / int64(time.Millisecond)
+			return xMS == yMS
+		}
+		return true
+	})
+
+	metas := cmp.Comparer(func(x, y *FrameMeta) bool {
+		// This checks that the meta attached to the frame and
+		// in the Golden file are the same. A conversion to JSON
+		// representation is needed for the Custom field within
+		// the meta where a custom struct{} cannot be directly
+		// compared for equality to a map[string]interface{}{}
+		// but a JSON byte representation of those is equivalent
+		xJSON, _ := json.Marshal(x)
+		yJSON, _ := json.Marshal(y)
+
+		return bytes.Equal(xJSON, yJSON)
+	})
+
 	unexportedField := cmp.AllowUnexported(Field{})
-	return []cmp.Option{f32s, f32Ptrs, f64s, f64Ptrs, confFloats, unexportedField, cmpopts.EquateEmpty()}
+	return []cmp.Option{f32s, f32Ptrs, f64s, f64Ptrs, confFloats, times, metas, unexportedField, cmpopts.EquateEmpty()}
 }
 
 const maxLengthExceededStr = "..."
@@ -472,4 +493,15 @@ func (f *Frame) StringTable(maxFields, maxRows int) (string, error) {
 
 	table.Render()
 	return sb.String(), nil
+}
+
+// FieldByName returns Field by its name and its index in Frame.Fields.
+// If not found then *Field will be nil and index will be -1.
+func (f *Frame) FieldByName(fieldName string) (*Field, int) {
+	for i, field := range f.Fields {
+		if field.Name == fieldName {
+			return field, i
+		}
+	}
+	return nil, -1
 }

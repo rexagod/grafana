@@ -3,16 +3,23 @@ package api
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/metrics"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/util"
+	"github.com/grafana/grafana/pkg/web"
 )
 
-func AdminCreateUser(c *models.ReqContext, form dtos.AdminCreateUserForm) response.Response {
+func (hs *HTTPServer) AdminCreateUser(c *models.ReqContext) response.Response {
+	form := dtos.AdminCreateUserForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	cmd := models.CreateUserCommand{
 		Login:    form.Login,
 		Email:    form.Email,
@@ -32,7 +39,8 @@ func AdminCreateUser(c *models.ReqContext, form dtos.AdminCreateUserForm) respon
 		return response.Error(400, "Password is missing or too short", nil)
 	}
 
-	if err := bus.Dispatch(&cmd); err != nil {
+	user, err := hs.Login.CreateUser(cmd)
+	if err != nil {
 		if errors.Is(err, models.ErrOrgNotFound) {
 			return response.Error(400, err.Error(), nil)
 		}
@@ -46,8 +54,6 @@ func AdminCreateUser(c *models.ReqContext, form dtos.AdminCreateUserForm) respon
 
 	metrics.MApiAdminUserCreate.Inc()
 
-	user := cmd.Result
-
 	result := models.UserIdDTO{
 		Message: "User created",
 		Id:      user.Id,
@@ -56,7 +62,11 @@ func AdminCreateUser(c *models.ReqContext, form dtos.AdminCreateUserForm) respon
 	return response.JSON(200, result)
 }
 
-func AdminUpdateUserPassword(c *models.ReqContext, form dtos.AdminUpdateUserPasswordForm) response.Response {
+func AdminUpdateUserPassword(c *models.ReqContext) response.Response {
+	form := dtos.AdminUpdateUserPasswordForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	userID := c.ParamsInt64(":id")
 
 	if len(form.Password) < 4 {
@@ -65,7 +75,7 @@ func AdminUpdateUserPassword(c *models.ReqContext, form dtos.AdminUpdateUserPass
 
 	userQuery := models.GetUserByIdQuery{Id: userID}
 
-	if err := bus.Dispatch(&userQuery); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &userQuery); err != nil {
 		return response.Error(500, "Could not read user from database", err)
 	}
 
@@ -79,7 +89,7 @@ func AdminUpdateUserPassword(c *models.ReqContext, form dtos.AdminUpdateUserPass
 		NewPassword: passwordHashed,
 	}
 
-	if err := bus.Dispatch(&cmd); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
 		return response.Error(500, "Failed to update user password", err)
 	}
 
@@ -87,15 +97,15 @@ func AdminUpdateUserPassword(c *models.ReqContext, form dtos.AdminUpdateUserPass
 }
 
 // PUT /api/admin/users/:id/permissions
-func AdminUpdateUserPermissions(c *models.ReqContext, form dtos.AdminUpdateUserPermissionsForm) response.Response {
+func (hs *HTTPServer) AdminUpdateUserPermissions(c *models.ReqContext) response.Response {
+	form := dtos.AdminUpdateUserPermissionsForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	userID := c.ParamsInt64(":id")
 
-	cmd := models.UpdateUserPermissionsCommand{
-		UserId:         userID,
-		IsGrafanaAdmin: form.IsGrafanaAdmin,
-	}
-
-	if err := bus.Dispatch(&cmd); err != nil {
+	err := updateUserPermissions(hs.SQLStore, userID, form.IsGrafanaAdmin)
+	if err != nil {
 		if errors.Is(err, models.ErrLastGrafanaAdmin) {
 			return response.Error(400, models.ErrLastGrafanaAdmin.Error(), nil)
 		}
@@ -111,7 +121,7 @@ func AdminDeleteUser(c *models.ReqContext) response.Response {
 
 	cmd := models.DeleteUserCommand{UserId: userID}
 
-	if err := bus.Dispatch(&cmd); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			return response.Error(404, models.ErrUserNotFound.Error(), nil)
 		}
@@ -127,12 +137,12 @@ func (hs *HTTPServer) AdminDisableUser(c *models.ReqContext) response.Response {
 
 	// External users shouldn't be disabled from API
 	authInfoQuery := &models.GetAuthInfoQuery{UserId: userID}
-	if err := bus.Dispatch(authInfoQuery); !errors.Is(err, models.ErrUserNotFound) {
+	if err := bus.DispatchCtx(c.Req.Context(), authInfoQuery); !errors.Is(err, models.ErrUserNotFound) {
 		return response.Error(500, "Could not disable external user", nil)
 	}
 
 	disableCmd := models.DisableUserCommand{UserId: userID, IsDisabled: true}
-	if err := bus.Dispatch(&disableCmd); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &disableCmd); err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			return response.Error(404, models.ErrUserNotFound.Error(), nil)
 		}
@@ -153,12 +163,12 @@ func AdminEnableUser(c *models.ReqContext) response.Response {
 
 	// External users shouldn't be disabled from API
 	authInfoQuery := &models.GetAuthInfoQuery{UserId: userID}
-	if err := bus.Dispatch(authInfoQuery); !errors.Is(err, models.ErrUserNotFound) {
+	if err := bus.DispatchCtx(c.Req.Context(), authInfoQuery); !errors.Is(err, models.ErrUserNotFound) {
 		return response.Error(500, "Could not enable external user", nil)
 	}
 
 	disableCmd := models.DisableUserCommand{UserId: userID, IsDisabled: false}
-	if err := bus.Dispatch(&disableCmd); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &disableCmd); err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			return response.Error(404, models.ErrUserNotFound.Error(), nil)
 		}
@@ -186,7 +196,18 @@ func (hs *HTTPServer) AdminGetUserAuthTokens(c *models.ReqContext) response.Resp
 }
 
 // POST /api/admin/users/:id/revoke-auth-token
-func (hs *HTTPServer) AdminRevokeUserAuthToken(c *models.ReqContext, cmd models.RevokeAuthTokenCmd) response.Response {
+func (hs *HTTPServer) AdminRevokeUserAuthToken(c *models.ReqContext) response.Response {
+	cmd := models.RevokeAuthTokenCmd{}
+	if err := web.Bind(c.Req, &cmd); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	userID := c.ParamsInt64(":id")
 	return hs.revokeUserAuthTokenInternal(c, userID, cmd)
+}
+
+// updateUserPermissions updates the user's permissions.
+//
+// Stubbable by tests.
+var updateUserPermissions = func(sqlStore *sqlstore.SQLStore, userID int64, isAdmin bool) error {
+	return sqlStore.UpdateUserPermissions(userID, isAdmin)
 }

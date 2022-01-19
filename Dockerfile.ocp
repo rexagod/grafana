@@ -4,14 +4,20 @@ FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.10 AS 
 WORKDIR $GOPATH/src/github.com/grafana/grafana
 ENV GOFLAGS="-mod=vendor"
 
-COPY go.mod go.sum ./
 COPY vendor vendor
 
+COPY go.mod go.sum embed.go Makefile build.go package.json ./
+COPY cue cue
+COPY packages/grafana-schema packages/grafana-schema
+COPY public/app/plugins public/app/plugins
 COPY pkg pkg
-COPY build.go build.go
-COPY package.json package.json
+COPY scripts scripts
+COPY cue.mod cue.mod
+COPY .bingo .bingo
 
+RUN go mod verify
 RUN go run build.go build
+# RUN make build-go
 # Need to copy the generated binaries to a non-platform specific location to handle
 # s390x builds for example
 RUN cp $GOPATH/src/github.com/grafana/grafana/bin/linux-$(go env GOARCH)/grafana-server \

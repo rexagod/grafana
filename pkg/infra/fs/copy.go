@@ -51,10 +51,6 @@ func CopyFile(src, dst string) (err error) {
 		}
 	}
 
-	if err = os.Link(src, dst); err == nil {
-		return copyPermissions(src, dst)
-	}
-
 	err = copyFileContents(src, dst)
 	return err
 }

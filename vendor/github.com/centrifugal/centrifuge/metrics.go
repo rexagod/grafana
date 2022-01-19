@@ -23,6 +23,7 @@ var (
 	buildInfoGauge         *prometheus.GaugeVec
 	numClientsGauge        prometheus.Gauge
 	numUsersGauge          prometheus.Gauge
+	numSubsGauge           prometheus.Gauge
 	numChannelsGauge       prometheus.Gauge
 	numNodesGauge          prometheus.Gauge
 	replyErrorCount        *prometheus.CounterVec
@@ -50,10 +51,12 @@ var (
 	actionCountRemovePresence   prometheus.Counter
 	actionCountPresence         prometheus.Counter
 	actionCountPresenceStats    prometheus.Counter
-	actionCountHistoryFull      prometheus.Counter
+	actionCountHistory          prometheus.Counter
 	actionCountHistoryRecover   prometheus.Counter
 	actionCountHistoryStreamTop prometheus.Counter
 	actionCountHistoryRemove    prometheus.Counter
+	actionCountSurvey           prometheus.Counter
+	actionCountNotify           prometheus.Counter
 
 	recoverCountYes prometheus.Counter
 	recoverCountNo  prometheus.Counter
@@ -79,36 +82,36 @@ var (
 	commandDurationUnknown       prometheus.Observer
 )
 
-func observeCommandDuration(method protocol.MethodType, d time.Duration) {
+func observeCommandDuration(method protocol.Command_MethodType, d time.Duration) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
 	var observer prometheus.Observer
 
 	switch method {
-	case protocol.MethodTypeConnect:
+	case protocol.Command_CONNECT:
 		observer = commandDurationConnect
-	case protocol.MethodTypeSubscribe:
+	case protocol.Command_SUBSCRIBE:
 		observer = commandDurationSubscribe
-	case protocol.MethodTypeUnsubscribe:
+	case protocol.Command_UNSUBSCRIBE:
 		observer = commandDurationUnsubscribe
-	case protocol.MethodTypePublish:
+	case protocol.Command_PUBLISH:
 		observer = commandDurationPublish
-	case protocol.MethodTypePresence:
+	case protocol.Command_PRESENCE:
 		observer = commandDurationPresence
-	case protocol.MethodTypePresenceStats:
+	case protocol.Command_PRESENCE_STATS:
 		observer = commandDurationPresenceStats
-	case protocol.MethodTypeHistory:
+	case protocol.Command_HISTORY:
 		observer = commandDurationHistory
-	case protocol.MethodTypePing:
+	case protocol.Command_PING:
 		observer = commandDurationPing
-	case protocol.MethodTypeSend:
+	case protocol.Command_SEND:
 		observer = commandDurationSend
-	case protocol.MethodTypeRPC:
+	case protocol.Command_RPC:
 		observer = commandDurationRPC
-	case protocol.MethodTypeRefresh:
+	case protocol.Command_REFRESH:
 		observer = commandDurationRefresh
-	case protocol.MethodTypeSubRefresh:
+	case protocol.Command_SUB_REFRESH:
 		observer = commandDurationSubRefresh
 	default:
 		observer = commandDurationUnknown
@@ -137,6 +140,13 @@ func setNumUsers(n float64) {
 	numUsersGauge.Set(n)
 }
 
+func setNumSubscriptions(n float64) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	numSubsGauge.Set(n)
+}
+
 func setNumChannels(n float64) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
@@ -151,11 +161,11 @@ func setNumNodes(n float64) {
 	numNodesGauge.Set(n)
 }
 
-func incReplyError(method protocol.MethodType, code uint32) {
+func incReplyError(method protocol.Command_MethodType, code uint32) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
-	replyErrorCount.WithLabelValues(strings.ToLower(protocol.MethodType_name[int32(method)]), strconv.FormatUint(uint64(code), 10)).Inc()
+	replyErrorCount.WithLabelValues(strings.ToLower(protocol.Command_MethodType_name[int32(method)]), strconv.FormatUint(uint64(code), 10)).Inc()
 }
 
 func incRecover(success bool) {
@@ -275,14 +285,18 @@ func incActionCount(action string) {
 		actionCountPresence.Inc()
 	case "presence_stats":
 		actionCountPresenceStats.Inc()
-	case "history_full":
-		actionCountHistoryFull.Inc()
+	case "history":
+		actionCountHistory.Inc()
 	case "history_recover":
 		actionCountHistoryRecover.Inc()
 	case "history_stream_top":
 		actionCountHistoryStreamTop.Inc()
 	case "history_remove":
 		actionCountHistoryRemove.Inc()
+	case "survey":
+		actionCountSurvey.Inc()
+	case "notify":
+		actionCountNotify.Inc()
 	}
 }
 
@@ -332,6 +346,13 @@ func initMetricsRegistry(registry prometheus.Registerer, metricsNamespace string
 		Help:      "Number of unique users connected.",
 	})
 
+	numSubsGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: "node",
+		Name:      "num_subscriptions",
+		Help:      "Number of subscriptions.",
+	})
+
 	numNodesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
 		Subsystem: "node",
@@ -372,7 +393,7 @@ func initMetricsRegistry(registry prometheus.Registerer, metricsNamespace string
 		Subsystem:  "client",
 		Name:       "command_duration_seconds",
 		Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 0.999: 0.0001},
-		Help:       "Client command duration summary.",
+		Help:       "clientID command duration summary.",
 	}, []string{"method"})
 
 	recoverCount = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -414,10 +435,12 @@ func initMetricsRegistry(registry prometheus.Registerer, metricsNamespace string
 	actionCountRemovePresence = actionCount.WithLabelValues("remove_presence")
 	actionCountPresence = actionCount.WithLabelValues("presence")
 	actionCountPresenceStats = actionCount.WithLabelValues("presence_stats")
-	actionCountHistoryFull = actionCount.WithLabelValues("history_full")
+	actionCountHistory = actionCount.WithLabelValues("history")
 	actionCountHistoryRecover = actionCount.WithLabelValues("history_recover")
 	actionCountHistoryStreamTop = actionCount.WithLabelValues("history_stream_top")
 	actionCountHistoryRemove = actionCount.WithLabelValues("history_remove")
+	actionCountSurvey = actionCount.WithLabelValues("survey")
+	actionCountNotify = actionCount.WithLabelValues("notify")
 
 	recoverCountYes = recoverCount.WithLabelValues("yes")
 	recoverCountNo = recoverCount.WithLabelValues("no")
@@ -428,22 +451,22 @@ func initMetricsRegistry(registry prometheus.Registerer, metricsNamespace string
 	transportMessagesSentWebsocket = transportMessagesSent.WithLabelValues(transportWebsocket)
 	transportMessagesSentSockJS = transportMessagesSent.WithLabelValues(transportSockJS)
 
-	labelForMethod := func(methodType protocol.MethodType) string {
-		return strings.ToLower(protocol.MethodType_name[int32(methodType)])
+	labelForMethod := func(methodType protocol.Command_MethodType) string {
+		return strings.ToLower(protocol.Command_MethodType_name[int32(methodType)])
 	}
 
-	commandDurationConnect = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeConnect))
-	commandDurationSubscribe = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeSubscribe))
-	commandDurationUnsubscribe = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeUnsubscribe))
-	commandDurationPublish = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypePublish))
-	commandDurationPresence = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypePresence))
-	commandDurationPresenceStats = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypePresenceStats))
-	commandDurationHistory = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeHistory))
-	commandDurationPing = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypePing))
-	commandDurationSend = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeSend))
-	commandDurationRPC = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeRPC))
-	commandDurationRefresh = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeRefresh))
-	commandDurationSubRefresh = commandDurationSummary.WithLabelValues(labelForMethod(protocol.MethodTypeSubRefresh))
+	commandDurationConnect = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_CONNECT))
+	commandDurationSubscribe = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_SUBSCRIBE))
+	commandDurationUnsubscribe = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_UNSUBSCRIBE))
+	commandDurationPublish = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_PUBLISH))
+	commandDurationPresence = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_PRESENCE))
+	commandDurationPresenceStats = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_PRESENCE_STATS))
+	commandDurationHistory = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_HISTORY))
+	commandDurationPing = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_PING))
+	commandDurationSend = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_SEND))
+	commandDurationRPC = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_RPC))
+	commandDurationRefresh = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_REFRESH))
+	commandDurationSubRefresh = commandDurationSummary.WithLabelValues(labelForMethod(protocol.Command_SUB_REFRESH))
 	commandDurationUnknown = commandDurationSummary.WithLabelValues("unknown")
 
 	if err := registry.Register(messagesSentCount); err != nil {
@@ -459,6 +482,9 @@ func initMetricsRegistry(registry prometheus.Registerer, metricsNamespace string
 		return err
 	}
 	if err := registry.Register(numUsersGauge); err != nil {
+		return err
+	}
+	if err := registry.Register(numSubsGauge); err != nil {
 		return err
 	}
 	if err := registry.Register(numChannelsGauge); err != nil {

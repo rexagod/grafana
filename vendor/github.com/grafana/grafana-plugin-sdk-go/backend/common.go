@@ -3,7 +3,12 @@ package backend
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
 )
+
+const dataCustomOptionsKey = "grafanaData"
+const secureDataCustomOptionsKey = "grafanaSecureData"
 
 // User represents a Grafana user.
 type User struct {
@@ -28,6 +33,19 @@ type AppInstanceSettings struct {
 
 	// Updated is the last time this plugin instance's configuration was updated.
 	Updated time.Time
+}
+
+// HTTPClientOptions creates httpclient.Options based on settings.
+func (s *AppInstanceSettings) HTTPClientOptions() (httpclient.Options, error) {
+	httpSettings, err := parseHTTPSettings(s.JSONData, s.DecryptedSecureJSONData)
+	if err != nil {
+		return httpclient.Options{}, err
+	}
+
+	opts := httpSettings.HTTPClientOptions()
+	setCustomOptionsFromHTTPSettings(&opts, httpSettings)
+
+	return opts, nil
 }
 
 // DataSourceInstanceSettings represents settings for a data source instance.
@@ -72,6 +90,32 @@ type DataSourceInstanceSettings struct {
 	Updated time.Time
 }
 
+// HTTPClientOptions creates httpclient.Options based on settings.
+func (s *DataSourceInstanceSettings) HTTPClientOptions() (httpclient.Options, error) {
+	httpSettings, err := parseHTTPSettings(s.JSONData, s.DecryptedSecureJSONData)
+	if err != nil {
+		return httpclient.Options{}, err
+	}
+
+	if s.BasicAuthEnabled {
+		httpSettings.BasicAuthEnabled = s.BasicAuthEnabled
+		httpSettings.BasicAuthUser = s.BasicAuthUser
+		httpSettings.BasicAuthPassword = s.DecryptedSecureJSONData["basicAuthPassword"]
+	} else if s.User != "" {
+		httpSettings.BasicAuthEnabled = true
+		httpSettings.BasicAuthUser = s.User
+		httpSettings.BasicAuthPassword = s.DecryptedSecureJSONData["password"]
+	}
+
+	opts := httpSettings.HTTPClientOptions()
+	opts.Labels["datasource_name"] = s.Name
+	opts.Labels["datasource_uid"] = s.UID
+
+	setCustomOptionsFromHTTPSettings(&opts, httpSettings)
+
+	return opts, nil
+}
+
 // PluginContext holds contextual information about a plugin request, such as
 // Grafana organization, user and plugin instance settings.
 type PluginContext struct {
@@ -103,4 +147,54 @@ type PluginContext struct {
 	//
 	// Will only be set if request targeting a data source instance.
 	DataSourceInstanceSettings *DataSourceInstanceSettings
+}
+
+func setCustomOptionsFromHTTPSettings(opts *httpclient.Options, httpSettings *HTTPSettings) {
+	opts.CustomOptions = map[string]interface{}{}
+
+	if httpSettings.JSONData != nil {
+		opts.CustomOptions[dataCustomOptionsKey] = httpSettings.JSONData
+	}
+
+	if httpSettings.SecureJSONData != nil {
+		opts.CustomOptions[secureDataCustomOptionsKey] = httpSettings.SecureJSONData
+	}
+}
+
+// JSONDataFromHTTPClientOptions extracts JSON data from CustomOptions of httpclient.Options.
+func JSONDataFromHTTPClientOptions(opts httpclient.Options) (res map[string]interface{}) {
+	if opts.CustomOptions == nil {
+		return
+	}
+
+	val, exists := opts.CustomOptions[dataCustomOptionsKey]
+	if !exists {
+		return
+	}
+
+	jsonData, ok := val.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	return jsonData
+}
+
+// SecureJSONDataFromHTTPClientOptions extracts secure JSON data from CustomOptions of httpclient.Options.
+func SecureJSONDataFromHTTPClientOptions(opts httpclient.Options) (res map[string]string) {
+	if opts.CustomOptions == nil {
+		return
+	}
+
+	val, exists := opts.CustomOptions[secureDataCustomOptionsKey]
+	if !exists {
+		return
+	}
+
+	secureJSONData, ok := val.(map[string]string)
+	if !ok {
+		return
+	}
+
+	return secureJSONData
 }

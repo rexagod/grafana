@@ -6,67 +6,101 @@ import "sync"
 type Type string
 
 const (
-	// TypeJSON means JSON protocol - in this case data encoded in
-	// JSON-streaming format.
+	// TypeJSON means JSON protocol.
 	TypeJSON Type = "json"
-	// TypeProtobuf means protobuf protocol - in this case data encoded
-	// as length-delimited (varint) protobuf messages.
+	// TypeProtobuf means Protobuf protocol.
 	TypeProtobuf Type = "protobuf"
+)
+
+var (
+	jsonPushEncoder     = NewJSONPushEncoder()
+	protobufPushEncoder = NewProtobufPushEncoder()
 )
 
 // GetPushEncoder ...
 func GetPushEncoder(protoType Type) PushEncoder {
 	if protoType == TypeJSON {
-		return NewJSONPushEncoder()
+		return jsonPushEncoder
 	}
-	return NewProtobufPushEncoder()
+	return protobufPushEncoder
 }
 
 var (
-	jsonReplyEncoderPool     sync.Pool
-	protobufReplyEncoderPool sync.Pool
+	jsonReplyEncoder     = NewJSONReplyEncoder()
+	protobufReplyEncoder = NewProtobufReplyEncoder()
 )
 
 // GetReplyEncoder ...
 func GetReplyEncoder(protoType Type) ReplyEncoder {
 	if protoType == TypeJSON {
-		e := jsonReplyEncoderPool.Get()
-		if e == nil {
-			return NewJSONReplyEncoder()
-		}
-		protoTypeoder := e.(ReplyEncoder)
-		protoTypeoder.Reset()
-		return protoTypeoder
+		return jsonReplyEncoder
 	}
-	e := protobufReplyEncoderPool.Get()
-	if e == nil {
-		return NewProtobufReplyEncoder()
-	}
-	protoTypeoder := e.(ReplyEncoder)
-	protoTypeoder.Reset()
-	return protoTypeoder
+	return protobufReplyEncoder
 }
 
-// PutReplyEncoder ...
-func PutReplyEncoder(protoType Type, e ReplyEncoder) {
+var (
+	jsonDataEncoderPool        sync.Pool
+	protobufDataEncoderPool    sync.Pool
+	jsonCommandDecoderPool     sync.Pool
+	protobufCommandDecoderPool sync.Pool
+)
+
+// GetDataEncoder ...
+func GetDataEncoder(protoType Type) DataEncoder {
 	if protoType == TypeJSON {
-		jsonReplyEncoderPool.Put(e)
+		e := jsonDataEncoderPool.Get()
+		if e == nil {
+			return NewJSONDataEncoder()
+		}
+		protoEncoder := e.(DataEncoder)
+		protoEncoder.Reset()
+		return protoEncoder
+	}
+	e := protobufDataEncoderPool.Get()
+	if e == nil {
+		return NewProtobufDataEncoder()
+	}
+	protoEncoder := e.(DataEncoder)
+	protoEncoder.Reset()
+	return protoEncoder
+}
+
+// PutDataEncoder ...
+func PutDataEncoder(protoType Type, e DataEncoder) {
+	if protoType == TypeJSON {
+		jsonDataEncoderPool.Put(e)
 		return
 	}
-	protobufReplyEncoderPool.Put(e)
+	protobufDataEncoderPool.Put(e)
 }
 
 // GetCommandDecoder ...
 func GetCommandDecoder(protoType Type, data []byte) CommandDecoder {
 	if protoType == TypeJSON {
-		return NewJSONCommandDecoder(data)
+		e := jsonCommandDecoderPool.Get()
+		if e == nil {
+			return NewJSONCommandDecoder(data)
+		}
+		commandDecoder := e.(*JSONCommandDecoder)
+		_ = commandDecoder.Reset(data)
+		return commandDecoder
 	}
-	return NewProtobufCommandDecoder(data)
+	e := protobufCommandDecoderPool.Get()
+	if e == nil {
+		return NewProtobufCommandDecoder(data)
+	}
+	commandDecoder := e.(*ProtobufCommandDecoder)
+	_ = commandDecoder.Reset(data)
+	return commandDecoder
 }
 
 // PutCommandDecoder ...
 func PutCommandDecoder(protoType Type, e CommandDecoder) {
-	return
+	if protoType == TypeJSON {
+		jsonCommandDecoderPool.Put(e)
+		return
+	}
+	protobufCommandDecoderPool.Put(e)
 }
 
 // GetResultEncoder ...
@@ -78,9 +112,7 @@ func GetResultEncoder(protoType Type) ResultEncoder {
 }
 
 // PutResultEncoder ...
-func PutResultEncoder(protoType Type, e ReplyEncoder) {
-	return
-}
+func PutResultEncoder(_ Type, _ ReplyEncoder) {}
 
 // GetParamsDecoder ...
 func GetParamsDecoder(protoType Type) ParamsDecoder {
@@ -91,6 +123,4 @@ func GetParamsDecoder(protoType Type) ParamsDecoder {
 }
 
 // PutParamsDecoder ...
-func PutParamsDecoder(protoType Type, e ParamsDecoder) {
-	return
-}
+func PutParamsDecoder(_ Type, _ ParamsDecoder) {}

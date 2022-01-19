@@ -6,6 +6,9 @@ type LogLevel int
 const (
 	// LogLevelNone means no logging.
 	LogLevelNone LogLevel = iota
+	// LogLevelTrace turns on trace logs - should only be used during development. This
+	// log level shows all client-server communication.
+	LogLevelTrace
 	// LogLevelDebug turns on debug logs - its generally too much for production in normal
 	// conditions but can help when developing and investigating problems in production.
 	LogLevelDebug
@@ -21,6 +24,7 @@ const (
 
 // levelToString matches LogLevel to its string representation.
 var levelToString = map[LogLevel]string{
+	LogLevelTrace: "trace",
 	LogLevelDebug: "debug",
 	LogLevelInfo:  "info",
 	LogLevelError: "error",
@@ -29,10 +33,7 @@ var levelToString = map[LogLevel]string{
 
 // LogLevelToString transforms Level to its string representation.
 func LogLevelToString(l LogLevel) string {
-	if t, ok := levelToString[l]; ok {
-		return t
-	}
-	return ""
+	return levelToString[l]
 }
 
 // LogEntry represents log entry.

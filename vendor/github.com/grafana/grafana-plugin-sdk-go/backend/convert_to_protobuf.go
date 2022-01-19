@@ -195,3 +195,56 @@ func (t ConvertToProtobuf) CallResourceRequest(req *CallResourceRequest) *plugin
 	}
 	return protoReq
 }
+
+// RunStreamRequest ...
+func (t ConvertToProtobuf) RunStreamRequest(req *RunStreamRequest) *pluginv2.RunStreamRequest {
+	protoReq := &pluginv2.RunStreamRequest{
+		PluginContext: t.PluginContext(req.PluginContext),
+		Path:          req.Path,
+	}
+	return protoReq
+}
+
+// SubscribeStreamRequest ...
+func (t ConvertToProtobuf) SubscribeStreamRequest(req *SubscribeStreamRequest) *pluginv2.SubscribeStreamRequest {
+	return &pluginv2.SubscribeStreamRequest{
+		PluginContext: t.PluginContext(req.PluginContext),
+		Path:          req.Path,
+	}
+}
+
+// SubscribeStreamResponse ...
+func (t ConvertToProtobuf) SubscribeStreamResponse(req *SubscribeStreamResponse) *pluginv2.SubscribeStreamResponse {
+	resp := &pluginv2.SubscribeStreamResponse{
+		Status: pluginv2.SubscribeStreamResponse_Status(req.Status),
+	}
+	if req.InitialData != nil {
+		resp.Data = req.InitialData.data
+	}
+	return resp
+}
+
+// PublishStreamRequest ...
+func (t ConvertToProtobuf) PublishStreamRequest(req *PublishStreamRequest) *pluginv2.PublishStreamRequest {
+	return &pluginv2.PublishStreamRequest{
+		PluginContext: t.PluginContext(req.PluginContext),
+		Path:          req.Path,
+		Data:          req.Data,
+	}
+}
+
+// PublishStreamResponse ...
+func (t ConvertToProtobuf) PublishStreamResponse(req *PublishStreamResponse) *pluginv2.PublishStreamResponse {
+	return &pluginv2.PublishStreamResponse{
+		Status: pluginv2.PublishStreamResponse_Status(req.Status),
+		Data:   req.Data,
+	}
+}
+
+// StreamPacket ...
+func (t ConvertToProtobuf) StreamPacket(p *StreamPacket) *pluginv2.StreamPacket {
+	protoReq := &pluginv2.StreamPacket{
+		Data: p.Data,
+	}
+	return protoReq
+}

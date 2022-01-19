@@ -1,3 +1,388 @@
+v0.18.8
+=======
+
+* Fix subscription cleanup on client close. [Pull request with a fix](https://github.com/centrifugal/centrifuge/pull/209).
+
+v0.18.7
+=======
+
+* Fix deadlock during PUB/SUB sync in channels with recovery. See [original report](https://github.com/centrifugal/centrifugo/issues/486) and [pr with a fix](https://github.com/centrifugal/centrifuge/pull/208).
+
+v0.18.6
+=======
+
+* Fix panic on concurrent subscribe to the same channel with recovery on ([#207](https://github.com/centrifugal/centrifuge/pull/207)).
+
+v0.18.5
+=======
+
+* Update `sockjs-go` dependency (contains fix for [sockjs-go#100](https://github.com/igm/sockjs-go/issues/100)).
+
+v0.18.4
+=======
+
+* Fix `bufio: buffer full` error when unmarshalling large messages. 
+
+v0.18.3
+=======
+
+* Fix `unexpected end of JSON input` errors in Javascript client with Centrifuge >= v0.18.0 when publishing formatted JSON (with new lines). See [centrifugal/protocol#10](https://github.com/centrifugal/protocol/pull/10). Pull request also removes one extra allocation (data copy) during JSON and Protobuf protocol Push message encoding. As the result JSON without new lines will be encoded even faster, Protobuf messages will be encoded faster regardless new lines in payloads. JSON encoding of payload with new lines will require additional allocation since we are stripping new lines now. The penalty is not critical though - see benchmarks in mentioned pull request.   
+
+v0.18.2
+=======
+
+* Redis: reload data pipeline immediately upon reconnect, this should help to avoid one additional error after reconnecting to Redis
+
+v0.18.1
+=======
+
+* Add history `reverse` field to client protocol and handle it.
+
+v0.18.0
+=======
+
+This release has **several backward incompatible changes**. Changes should affect the small number of Centrifuge library users, and it should be possible to adapt only by slightly modifying server-side code. Follow release notes carefully.
+
+* **Breaking change**. Client history API behavior changed. Now history call does not return all publications by default ([#196](https://github.com/centrifugal/centrifuge/issues/196)). See an advice how you can handle this change in a backwards compatible way below.
+* **Breaking change**. Redis STREAM data structure now used by default to keep a publication history in Redis Engine ([#195](https://github.com/centrifugal/centrifuge/issues/195)). Previously Centrifuge Redis Engine used LIST data structure by default. See `RedisBrokerConfig.UseLists` option to turn on previous behavior. Redis streams is a recommended way though, support for LIST data structure may be eventually removed.
+* **Breaking change**. `Transport.Encoding` removed. It turns out that this option is not really useful for the Centrifuge library and can only cause confusion.
+* **Breaking change**. Change `Node.History` behavior – Unrecoverable Position error now returned based on the wrong epoch only.
+* **Breaking change**. Remove deprecated seq/gen fields - see [#197](https://github.com/centrifugal/centrifuge/issues/197). Those were deprecated for a long time.
+* **Breaking change**. `Client.Connect` now does not return an error – this allows Centrifuge to automatically send a proper Disconnect push towards the connection.
+* **Breaking change**. `WithClientWhitelist` renamed to `WithDisconnectClientWhitelist`.
+* Much faster JSON client protocol. Expect at least 4x speedup for small messages JSON encoding/decoding. For large messages the difference can be even bigger. This is possible due to using code generation for encoding and a faster library for JSON decoding in `centrifugal/protocol` package. See [centrifugal/protocol#8](https://github.com/centrifugal/protocol/pull/8).
+* Message broadcast allocates less - see [#193](https://github.com/centrifugal/centrifuge/issues/193). Can be noticeable when broadcasting messages to large number of active subscribers. The side effect of this change is that Transport implementations should now have `Write` and `WriteMany` methods.
+* Centrifuge now uses official Protobuf library for Go with [planetscale/vtprotobuf](https://github.com/planetscale/vtprotobuf) code generator instead of [gogo/protobuf](https://github.com/gogo/protobuf) library which is not maintained these days anymore. The performance of Protobuf marshaling/unmarshaling is comparable.
+* New `Config.UseSingleFlight` option added. The option can help to reduce the load on Broker and Presence manager during massive reconnect and history synchronization scenarios.
+* WebSocket subprotocol is now can be used for switching to Protobuf protocol ([#194](https://github.com/centrifugal/centrifuge/issues/194)). This will help to avoid adding `?format=protobuf` in WebSocket connection URL.
+* `OnTransportWrite` callback added to inject custom logic before actual write to a client connection.
+* `OnNodeInfoSend` callback added to attach custom data to Node control frame.
+* `Client.Info` method which returns a copy of the connection info (set by `Credentials`).
+* `Node.History` now supports iteration in reversed order ([#201](https://github.com/centrifugal/centrifuge/issues/201)).
+* `Client.Refresh` and `Node.Refresh` methods added to prolong/expire connections (useful for unidirectional transports).
+* GRPC unidirectional transport example improvements
+
+Regarding client history API change. So previously when a client called history it received all publications in a stream by default. In Centrifuge v0.18.0 it will only receive current stream top position (`offset` and `epoch`) without any publications.
+
+To mimic previous behavior you can use code like this:
+
+```go
+node.OnConnect(func(client *centrifuge.Client) {
+    client.OnHistory(func(e centrifuge.HistoryEvent, cb centrifuge.HistoryCallback) {
+        if e.Filter.Limit == 0 {
+            result, err := node.History(e.Channel,
+                centrifuge.WithSince(e.Filter.Since),
+                centrifuge.WithLimit(centrifuge.NoLimit),
+            )
+            if err != nil {
+                cb(centrifuge.HistoryReply{}, err)
+                return
+            }
+            cb(centrifuge.HistoryReply{Result: &result}, nil)
+            return
+        }
+        cb(centrifuge.HistoryReply{}, nil)
+    })
+})
+```
+
+I.e. explicitly handle zero limit and return all publications in response (using `centrifuge.NoLimit`). Then upgrade clients to use recent Centrifuge clients (will be released soon after Centrifuge v0.18.0) which allow setting limit explicitly and remove this custom logic eventually from the server code.
+
+```
+gorelease -base v0.17.1 -version v0.18.0
+github.com/centrifugal/centrifuge
+---------------------------------
+Incompatible changes:
+- (*Client).Connect: changed from func(ConnectRequest) error to func(ConnectRequest)
+- CompatibilityFlags: removed
+- EncodingType: removed
+- EncodingTypeBinary: removed
+- EncodingTypeJSON: removed
+- NodeInfo: old is comparable, new is not
+- RedisBrokerConfig.UseStreams: removed
+- Transport.Write: changed from func(...[]byte) error to func([]byte) error
+- Transport.WriteMany: added
+- TransportInfo.Encoding, method set of Transport: removed
+- TransportInfo.Encoding: removed
+- UseSeqGen: removed
+- WithClientWhitelist: removed
+Compatible changes:
+- (*Client).Info: added
+- (*Client).Refresh: added
+- (*Hub).NumSubscriptions: added
+- (*Hub).UserConnections: added
+- (*Node).OnNodeInfoSend: added
+- (*Node).OnTransportWrite: added
+- (*Node).Refresh: added
+- Config.UseSingleFlight: added
+- ConnectEvent.Channels: added
+- DisconnectChannelLimit: added
+- HistoryFilter.Reverse: added
+- HistoryOptions.Reverse: added
+- NodeInfo.Data: added
+- NodeInfo.NumSubs: added
+- NodeInfoSendHandler: added
+- NodeInfoSendReply: added
+- RedisBrokerConfig.UseLists: added
+- RefreshOption: added
+- RefreshOptions: added
+- SubscribeOptions.RecoverSince: added
+- TransportWriteEvent: added
+- TransportWriteHandler: added
+- WithDisconnectClient: added
+- WithDisconnectClientWhitelist: added
+- WithRecoverSince: added
+- WithRefreshClient: added
+- WithRefreshExpireAt: added
+- WithRefreshExpired: added
+- WithRefreshInfo: added
+- WithReverse: added
+
+v0.18.0 is a valid semantic version for this release.
+```
+
+v0.17.1
+=======
+
+* Possibility to bypass broker when publishing - see [#198](https://github.com/centrifugal/centrifuge/pull/198)
+* Added more tests
+
+v0.17.0
+=======
+
+* Remove unidirectional WebSocket support from builtin WebSocket transport. This was done to not force transport implementation details and to reduce code in a library core. It's still possible to build unidirectional WebSocket transport - just not with a builtin `WebsocketHandler`, see [example](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_ws).
+* Introduce `node.Notify` method. `Notify` allows sending an asynchronous notification to all other node (or to a single specific node). Unlike `Survey` it does not wait for any response
+* `Since` option of history call renamed to `WithSince` for consistency with other option names
+
+```
+gorelease -base v0.16.0 -version v0.17.0
+github.com/centrifugal/centrifuge
+---------------------------------
+Incompatible changes:
+- Since: removed
+- WebsocketConfig.Unidirectional: removed
+Compatible changes:
+- (*Node).Notify: added
+- (*Node).OnNotification: added
+- NotificationEvent: added
+- NotificationHandler: added
+- WithSince: added
+```
+
+v0.16.0
+=======
+
+This release is huge. The list of changes may look scary - but most changes should be pretty straightforward to adopt.
+
+Highlights:
+
+* Support for unidirectional clients, this opens a road to more adoption of Centrifuge for cases where bidirectional communication is not really needed. **Unidirectional support is still a subject to change in future versions** as soon as more feedback appears – for now Centrifuge has examples for [GRPC](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_grpc), [EventSource(SSE)](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_sse), [Fetch Streams](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_fetch_stream), [Unidirectional WebSocket](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_ws) transports. **The beauty here is that you don't need to use any Centrifuge client library to receive real-time updates** - just use native browser APIs or GRPC generated code with simple decoding step. 
+* The introduction of unidirectional transport required to change `Transport` interface a bit. The important thing is that it's now a responsibility of `Transport.Write` to properly encode data to JSON-streaming or Protobuf length-delimited format
+* **Centrifuge now uses [same-origin policy](https://en.wikipedia.org/wiki/Same-origin_policy) by default when checking incoming WebSocket or SockJS request due to security considerations** (prevent CSRF attack), previously default check allowed all connections. If you want to mimic previous behavior then pass custom check functions to handler configurations – see example below.
+* New `Subscribe` method of `Node` - to subscribe user to server-side channels cluster-wide - see [example that demonstrates new API](https://github.com/centrifugal/centrifuge/tree/master/_examples/user_subscribe_unsubscribe)
+* Engine interface removed - now Centrifuge only has separate `Broker` and `PresenceManager` entities. This changes how you should set up Redis to scale Nodes - see [updated Redis example](https://github.com/centrifugal/centrifuge/tree/master/_examples/redis_broker_presence) - it's now **required to provide Redis Broker and Redis Presence Manager separately**
+* Trace level logging (to see all protocol frames, obviously mostly suitable for development)
+* `WithResubscribe` option of unsubscribe removed - it never worked properly in client libraries and had no clearly defined semantics
+* It is now possible to return custom data in Subscribe result or in Subscribe Push
+* `Broker.PublishControl` method signature changed - it now accepts `shardKey` string argument, this is not used at the moment but can be used later if we will need an order of control messages
+* `PresenceManager.AddPresence` signature changed - now presence expiration time is an option of PresenceManager itself
+* Field `version` of `ConnectResult` is now omitted from JSON if empty
+* Server-side subscriptions now trigger unsubscribe event (with `ServerSide` boolean flag set to `true`)
+* Slightly faster Redis history decoding - [commit](https://github.com/centrifugal/centrifuge/commit/fe31f2469e4ab7790ffa48333c0c063a0f9378e8)
+* Hub container now shards connections and subscriptions - this can reduce lock contention significantly in some workloads thus reducing operation latency. See [#184](https://github.com/centrifugal/centrifuge/pull/184)
+* Various example improvements
+
+That's what you have to do if you want to accept all connections without same-origin check introduced in v0.16.0 (can lead to CSRF vulnerability in some situations):
+
+```go
+wsHandler := centrifuge.NewWebsocketHandler(node, centrifuge.WebsocketConfig{
+    CheckOrigin: func(r *http.Request) bool {
+        return true
+    },
+})
+
+sockjsHandler := centrifuge.NewSockjsHandler(node, centrifuge.SockjsConfig{
+    CheckOrigin: func(r *http.Request) bool {
+        return true
+    },
+    WebsocketCheckOrigin: func(r *http.Request) bool {
+        return true
+    },  
+})
+```
+
+All changes:
+
+```
+$ gorelease -base v0.15.0 -version v0.16.0
+github.com/centrifugal/centrifuge
+---------------------------------
+Incompatible changes:
+- (*Client).Subscribe: changed from func(string) error to func(string, ...SubscribeOption) error
+- (*Client).Unsubscribe: changed from func(string, ...UnsubscribeOption) error to func(string) error
+- (*Node).SetEngine: removed
+- Broker.PublishControl: changed from func([]byte, string) error to func([]byte, string, string) error
+- Config.ClientPresenceExpireInterval: removed
+- Engine: removed
+- LogLevelDebug: value changed from 1 to 2
+- LogLevelError: value changed from 3 to 4
+- LogLevelInfo: value changed from 2 to 3
+- MemoryEngine: removed
+- MemoryEngineConfig: removed
+- NewMemoryEngine: removed
+- NewRedisEngine: removed
+- PresenceManager.AddPresence: changed from func(string, string, *ClientInfo, time.Duration) error to func(string, string, *ClientInfo) error
+- RedisEngine: removed
+- RedisEngineConfig: removed
+- RedisShardConfig.ClusterAddrs: removed
+- RedisShardConfig.Host: removed
+- RedisShardConfig.Port: removed
+- RedisShardConfig.Prefix: removed
+- RedisShardConfig.PubSubNumWorkers: removed
+- RedisShardConfig.SentinelAddrs: removed
+- Transport.Write: changed from func([]byte) error to func(...[]byte) error
+- TransportInfo.DisabledPushFlags: added
+- TransportInfo.Unidirectional: added
+- UnsubscribeOptions.Resubscribe: removed
+- WithResubscribe: removed
+Compatible changes:
+- (*Client).Connect: added
+- (*Node).Subscribe: added
+- ConnectRequest: added
+- DefaultRedisBrokerPrefix: added
+- DefaultRedisConnectTimeout: added
+- DefaultRedisPresenceManagerPrefix: added
+- DefaultRedisPresenceTTL: added
+- DefaultRedisReadTimeout: added
+- DefaultRedisWriteTimeout: added
+- LogLevelTrace: added
+- MemoryBroker: added
+- MemoryBrokerConfig: added
+- MemoryPresenceManager: added
+- MemoryPresenceManagerConfig: added
+- NewMemoryBroker: added
+- NewMemoryPresenceManager: added
+- NewRedisBroker: added
+- NewRedisPresenceManager: added
+- NewRedisShard: added
+- PushFlagConnect: added
+- PushFlagDisconnect: added
+- PushFlagJoin: added
+- PushFlagLeave: added
+- PushFlagMessage: added
+- PushFlagPublication: added
+- PushFlagSubscribe: added
+- PushFlagUnsubscribe: added
+- RedisBroker: added
+- RedisBrokerConfig: added
+- RedisPresenceManager: added
+- RedisPresenceManagerConfig: added
+- RedisShard: added
+- RedisShardConfig.Address: added
+- RedisShardConfig.ClusterAddresses: added
+- RedisShardConfig.SentinelAddresses: added
+- SubscribeOption: added
+- SubscribeOptions.Data: added
+- SubscribeRequest: added
+- UnsubscribeEvent.ServerSide: added
+- WebsocketConfig.Unidirectional: added
+- WithChannelInfo: added
+- WithExpireAt: added
+- WithJoinLeave: added
+- WithPosition: added
+- WithPresence: added
+- WithRecover: added
+- WithSubscribeClient: added
+- WithSubscribeData: added
+- WithUnsubscribeClient: added
+
+v0.16.0 is a valid semantic version for this release.
+```
+
+v0.15.0
+=======
+
+* Add `Node.Survey` method – it allows gathering results from all running nodes. It's possible to define your own survey handlers. See [example](https://github.com/centrifugal/centrifuge/tree/master/_examples/survey). Keep in mind that `Survey` does not scale very well as number of Centrifuge Nodes grows. Though it has reasonably good performance to perform rare tasks even with relatively large number of nodes – see [benchmark in pull request](https://github.com/centrifugal/centrifuge/pull/174)
+* The main motivation of adding `Node.Survey` was attempt to remove `Broker.Channels` method – which is not supported by most of existing PUB/SUB brokers and does not work in Redis cluster. `Broker.Channels` now removed, but it can be replaced with survey if needed
+* Improve clustering - node will now send a SHUTDOWN message so other nodes have a chance to realize that node left cluster almost immediately 
+* Signature of `Since` history call option changed – it now accepts a pointer to StreamPosition. This change simplifies a code to construct history call
+* Added `SubscribeOptions.Position` boolean flag to enable positioning in channel stream. Positioning means that Centrifuge will check that the client did not miss any message from PUB/SUB system, as soon as loss detected client will be disconnected with `Insufficient State` reason. This is very similar to what `Recover: true` option did, but `Position: true` does not enable recovery. As soon as `Position` flag enabled Centrifuge will expose top stream `StreamPosition` information to a client in Subscribe Reply
+* Added possibility to iterate over a channel history stream from client side. See [an example that demonstrates this](https://github.com/centrifugal/centrifuge/tree/master/_examples/history_pagination)
+* New `Config` options: `HistoryMaxPublicationLimit` and `RecoveryMaxPublicationLimit` to control maximum number of publications to return during history call or recovery process. See Centrifuge documentation for detailed description
+* New example that shows [Centrifuge integration with Tarantool](https://github.com/centrifugal/centrifuge/tree/master/_examples/custom_engine_tarantool). Tarantool engine implementation can outperform Redis (up to 5-10x for presence and history operations), though while example contains a full-featured fast Engine implementation – it's still just an example at the moment and have not been tested in production environment
+* New blog post in Centrifugo blog where we [introduce Centrifuge library](https://centrifugal.github.io/centrifugo/blog/intro_centrifuge/) 
+* Most [examples](https://github.com/centrifugal/centrifuge/tree/master/_examples) now do not use jQuery which was replaced by vanilla JS
+
+```
+$ gorelease -base v0.14.2 -version v0.15.0
+github.com/centrifugal/centrifuge
+---------------------------------
+Incompatible changes:
+- (*MemoryEngine).Channels: removed
+- (*MemoryEngine).PublishControl: changed from func([]byte) error to func([]byte, string) error
+- (*Node).Channels: removed
+- (*RedisEngine).Channels: removed
+- (*RedisEngine).PublishControl: changed from func([]byte) error to func([]byte, string) error
+- Broker.Channels, method set of Engine: removed
+- Broker.Channels: removed
+- Broker.PublishControl: changed from func([]byte) error to func([]byte, string) error
+- BrokerEventHandler.HandlePublication: changed from func(string, *Publication) error to func(string, *Publication, StreamPosition) error
+- Since: changed from func(StreamPosition) HistoryOption to func(*StreamPosition) HistoryOption
+Compatible changes:
+- (*Node).ID: added
+- (*Node).OnSurvey: added
+- (*Node).Survey: added
+- Config.HistoryMaxPublicationLimit: added
+- Config.RecoveryMaxPublicationLimit: added
+- ErrorUnrecoverablePosition: added
+- HistoryEvent.Filter: added
+- SubscribeOptions.Position: added
+- SurveyCallback: added
+- SurveyEvent: added
+- SurveyHandler: added
+- SurveyReply: added
+- SurveyResult: added
+
+v0.15.0 is a valid semantic version for this release.
+```
+
+v0.14.2
+=======
+
+* fix concurrent map access which could result in runtime crash when using presence feature.
+
+v0.14.1
+=======
+
+* remove unused `history_full` metric, add `history` action metric to track all history calls.
+
+v0.14.0
+=======
+
+* Add possibility to disconnect user with custom `Disconnect` object, and with client ID whitelist.
+* Thus fixing non-working `WithReconnect` option when calling `node.Disconnect` method.
+* No error returned from `client.Disconnect` method anymore. It was always `nil` before.
+
+Here is what changed since v0.13.0:
+
+```
+gorelease -base v0.13.0 -version v0.14.0
+github.com/centrifugal/centrifuge
+---------------------------------
+Incompatible changes:
+- (*Client).Disconnect: changed from func(*Disconnect) error to func(*Disconnect)
+- DisconnectOptions.Reconnect: removed
+- DisconnectOptions: old is comparable, new is not
+- WithReconnect: removed
+Compatible changes:
+- DisconnectOptions.ClientWhitelist: added
+- DisconnectOptions.Disconnect: added
+- WithClientWhitelist: added
+- WithDisconnect: added
+
+v0.14.0 is a valid semantic version for this release.
+```
+
 v0.13.0
 =======
 

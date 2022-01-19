@@ -1,4 +1,4 @@
-// Copyright 2020 InfluxData, Inc. All rights reserved.
+// Copyright 2020-2021 InfluxData, Inc. All rights reserved.
 // Use of this source code is governed by MIT
 // license that can be found in the LICENSE file.
 
@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	Version = "2.2.0"
+	// Version defines current version
+	Version = "2.3.0"
 )
 
 func init() {

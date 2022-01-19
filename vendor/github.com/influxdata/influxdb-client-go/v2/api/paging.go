@@ -1,4 +1,4 @@
-// Copyright 2020 InfluxData, Inc. All rights reserved.
+// Copyright 2020-2021 InfluxData, Inc. All rights reserved.
 // Use of this source code is governed by MIT
 // license that can be found in the LICENSE file.
 
@@ -6,6 +6,7 @@ package api
 
 import "github.com/influxdata/influxdb-client-go/v2/domain"
 
+// PagingOption is the function type for applying paging option
 type PagingOption func(p *Paging)
 
 // Paging holds pagination parameters for various Get* functions of InfluxDB 2 API

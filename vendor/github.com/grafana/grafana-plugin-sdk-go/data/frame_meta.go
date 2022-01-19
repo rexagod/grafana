@@ -10,13 +10,16 @@ import (
 // NOTE -- in javascript this can accept any `[key: string]: any;` however
 // this interface only exposes the values we want to be exposed
 type FrameMeta struct {
-	// Path is a browsable path on the datasource
+	// Type asserts that the frame matches a known type structure
+	Type FrameType `json:"type,omitempty"`
+
+	// Path is a browsable path on the datasource.
 	Path string `json:"path,omitempty"`
 
-	// PathSeparator defines the separator pattern to decode a hiearchy. The default separator is '/'
+	// PathSeparator defines the separator pattern to decode a hiearchy. The default separator is '/'.
 	PathSeparator string `json:"pathSeparator,omitempty"`
 
-	// Datasource specific values
+	// Custom datasource specific values.
 	Custom interface{} `json:"custom,omitempty"`
 
 	// Stats is an array of query result statistics.
@@ -26,7 +29,10 @@ type FrameMeta struct {
 	// Grafana can display to the user in the user interface.
 	Notices []Notice `json:"notices,omitempty"`
 
-	// PreferredVisualisationType is currently used to show results in Explore only in preferred visualisation option.
+	// Channel is the path to a stream in grafana live that has real-time updates for this data.
+	Channel string `json:"channel,omitempty"`
+
+	// PreferredVisualization is currently used to show results in Explore only in preferred visualisation option.
 	PreferredVisualization VisType `json:"preferredVisualisationType,omitempty"`
 
 	// ExecutedQueryString is the raw query sent to the underlying system. All macros and templating
@@ -34,6 +40,7 @@ type FrameMeta struct {
 	ExecutedQueryString string `json:"executedQueryString,omitempty"`
 }
 
+// Should be kept in sync with grafana/packages/grafana-data/src/types/data.ts#PreferredVisualisationType
 const (
 	// VisTypeGraph indicates the response should be visualized using a graph.
 	VisTypeGraph VisType = "graph"
@@ -43,6 +50,12 @@ const (
 
 	// VisTypeLogs indicates the response should be visualized using a logs visualization.
 	VisTypeLogs = "logs"
+
+	// VisTypeTrace indicates the response should be visualized using a trace view visualization.
+	VisTypeTrace = "trace"
+
+	// VisTypeNodeGraph indicates the response should be visualized using a node graph visualization.
+	VisTypeNodeGraph = "nodeGraph"
 )
 
 // VisType is used to indicate how the data should be visualized in explore.
@@ -121,8 +134,9 @@ func (n NoticeSeverity) String() string {
 		return noticeSeverityWarningString
 	case NoticeSeverityError:
 		return noticeSeverityErrorString
+	default:
+		return ""
 	}
-	return ""
 }
 
 // MarshalJSON implements the json.Marshaler interface.

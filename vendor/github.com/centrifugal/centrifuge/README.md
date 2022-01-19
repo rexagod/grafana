@@ -3,29 +3,29 @@
 [![codecov.io](https://codecov.io/gh/centrifugal/centrifuge/branch/master/graphs/badge.svg)](https://codecov.io/github/centrifugal/centrifuge?branch=master)
 [![GoDoc](https://pkg.go.dev/badge/centrifugal/centrifuge)](https://pkg.go.dev/github.com/centrifugal/centrifuge)
 
-**This library has no v1 release yet, API still evolves. Use with strict versioning.** At this moment patch version updates only have backwards compatible changes and fixes, minor version updates can have backwards-incompatible API changes. See [v1.0.0 milestone](https://github.com/centrifugal/centrifuge/milestone/1). Master branch can have unreleased code.
+**This library has no v1 release, API still evolves. Use with strict versioning.** Before v1 release patch version updates only have backwards compatible changes and fixes, minor version updates can have backwards-incompatible API changes. For all breaking changes we provide a detailed changelog. Master branch can have unreleased code.
 
 Centrifuge library is a real-time core of [Centrifugo](https://github.com/centrifugal/centrifugo) server. It's also supposed to be a general purpose real-time messaging library for Go programming language. The library built on top of strict client-server protocol schema and exposes various real-time oriented primitives for a developer. Centrifuge solves several problems a developer may come across when building complex real-time applications – like scalability (millions of connections), proper persistent connection management and invalidation, fast reconnect with message recovery, WebSocket fallback option.
 
 Library highlights:
 
 * Fast and optimized for low-latency communication with millions of client connections. See [test stand with 1 million connections in Kubernetes](https://centrifugal.github.io/centrifugo/misc/benchmark/)
-* WebSocket with JSON or binary Protobuf protocol
-* SockJS polyfill library support for browsers where WebSocket not available (JSON only)
+* Builtin bidirectional transports: WebSocket (JSON or binary Protobuf) and SockJS (JSON only)
+* Possibility to use unidirectional transports without using custom Centrifuge client library: see examples for [GRPC](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_grpc), [EventSource(SSE)](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_sse), [Fetch Streams](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_fetch_stream), [Unidirectional WebSocket](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_ws)  
 * Built-in horizontal scalability with Redis PUB/SUB, consistent Redis sharding, Sentinel and Redis Cluster for HA
-* Possibility to register custom PUB/SUB broker and presence storage implementations
 * Native authentication over HTTP middleware or custom token-based
-* Bidirectional asynchronous message communication and RPC calls
 * Channel concept to broadcast message to all active subscribers
 * Client-side and server-side channel subscriptions
-* Presence information for channels (show all active clients in channel)
-* History information for channels (stream of messages published into channel)
+* Bidirectional asynchronous message communication and RPC calls
+* Presence information for channels (show all active clients in a channel)
+* History information for channels (ephemeral streams with size and TTL retention)
 * Join/leave events for channels (aka client goes online/offline)
+* Possibility to register a custom PUB/SUB Broker and Presence Manager implementations
 * Message recovery mechanism for channels to survive PUB/SUB delivery problems, short network disconnects or node restart
 * Prometheus instrumentation
 * Client libraries for main application environments (see below)
 
-Client libraries:
+For **bidirectional** communication between a client and a Centrifuge-based server we have a bunch of client libraries:
 
 * [centrifuge-js](https://github.com/centrifugal/centrifuge-js) – for a browser, NodeJS and React Native
 * [centrifuge-go](https://github.com/centrifugal/centrifuge-go) - for Go language
@@ -34,7 +34,15 @@ Client libraries:
 * [centrifuge-swift](https://github.com/centrifugal/centrifuge-swift) – for native iOS development
 * [centrifuge-java](https://github.com/centrifugal/centrifuge-java) – for native Android development and general Java
 
-See [Documentation](https://pkg.go.dev/github.com/centrifugal/centrifuge) and [examples](https://github.com/centrifugal/centrifuge/tree/master/_examples). You can also consider [Centrifugo server documentation](https://centrifugal.github.io/centrifugo/) as extra doc for this package (because it's built on top of Centrifuge library).
+If you opt for a **unidirectional** communication then you may leverage Centrifuge possibilities without any specific library on client-side - simply by using native browser API or GRPC-generated code. See examples of unidirectional communication over [GRPC](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_grpc), [EventSource(SSE)](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_sse), [Fetch Streams](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_fetch_stream), [WebSocket](https://github.com/centrifugal/centrifuge/tree/master/_examples/unidirectional_ws).
+
+### Explore Centrifuge
+
+* see Centrifuge [Documentation on pkg.go.dev](https://pkg.go.dev/github.com/centrifugal/centrifuge)
+* read [Centrifuge introduction post](https://centrifugal.github.io/centrifugo/blog/intro_centrifuge/) in Centrifugo blog   
+* you can also consider [Centrifugo server documentation](https://centrifugal.github.io/centrifugo/) as extra doc for this package (since Centrifugo is built on top of Centrifuge library, though keep in mind that Centrifugo adds some things on top, Centrifugo source code is also a good place to learn from)
+* read this README to the end for [installation](#installation) details, [quick example](#quick-example) and [tips and tricks](#tips-and-tricks) section
+* check out [examples](https://github.com/centrifugal/centrifuge/tree/master/_examples) folder
 
 ### Installation
 
@@ -48,7 +56,7 @@ go get github.com/centrifugal/centrifuge
 
 ### Quick example
 
-Let's take a look on how to build the simplest real-time chat ever with Centrifuge library. Clients will be able to connect to server over Websocket, send a message into channel and this message will be instantly delivered to all active channel subscribers. On server side we will accept all connections and will work as simple PUB/SUB proxy without worrying too much about permissions. In this example we will use Centrifuge Javascript client on a frontend.
+Let's take a look on how to build the simplest real-time chat with Centrifuge library. Clients will be able to connect to a server over Websocket, send a message into a channel and this message will be instantly delivered to all active channel subscribers. On a server side we will accept all connections and will work as a simple PUB/SUB proxy without worrying too much about permissions. In this example we will use Centrifuge Javascript client on a frontend.
 
 Create file `main.go` with the following code:
 
@@ -63,19 +71,21 @@ import (
 	"github.com/centrifugal/centrifuge"
 )
 
-// Authentication middleware. Centrifuge expects Credentials with current user ID.
-// Without provided Credentials client connection won't be accepted. Another way
-// to authenticate connection is reacting to node.OnConnecting event where you may
-// authenticate connection based on custom token sent by client in first protocol
-// frame. See _examples folder in repo to find real-life auth samples (OAuth2, Gin
-// sessions, JWT etc).
+// Authentication middleware example. Centrifuge expects Credentials
+// with current user ID set. Without provided Credentials client
+// connection won't be accepted. Another way to authenticate connection
+// is reacting to node.OnConnecting event where you may authenticate
+// connection based on a custom token sent by a client in first protocol
+// frame. See _examples folder in repo to find real-life auth samples
+// (OAuth2, Gin sessions, JWT etc).
 func auth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		// Put authentication Credentials into request Context. Since we don't
-		// have any session backend here we simply set user ID as empty string.
-		// Users with empty ID called anonymous users, in real app you should
-		// decide whether anonymous users allowed to connect to your server or not.
+		// Put authentication Credentials into request Context.
+		// Since we don't have any session backend here we simply
+		// set user ID as empty string. Users with empty ID called
+		// anonymous users, in real app you should decide whether
+		// anonymous users allowed to connect to your server or not.
 		cred := &centrifuge.Credentials{
 			UserID: "",
 		}
@@ -86,23 +96,24 @@ func auth(h http.Handler) http.Handler {
 }
 
 func main() {
-	// We use default config here as starting point. Default config contains
-	// reasonable values for available options.
+	// We use default config here as a starting point. Default config
+	// contains reasonable values for available options.
 	cfg := centrifuge.DefaultConfig
 
-	// Node is the core object in Centrifuge library responsible for many useful
-	// things. For example Node allows to publish messages to channels with its
-	// Publish method – we are using it below.
+	// Node is the core object in Centrifuge library responsible for
+	// many useful things. For example Node allows to publish messages
+	// to channels with its Publish method.
 	node, err := centrifuge.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Set ConnectHandler called when client successfully connected to Node. Your code
-	// inside handler must be synchronized since it will be called concurrently from
-	// different goroutines (belonging to different client connections). See information
-	// about connection life cycle in library readme. This handler should not block – so
-	// do minimal work here, set required connection event handlers and return.
+	// Set ConnectHandler called when client successfully connected to Node.
+	// Your code inside a handler must be synchronized since it will be called
+	// concurrently from different goroutines (belonging to different client
+	// connections). See information about connection life cycle in library readme.
+	// This handler should not block – so do minimal work here, set required
+	// connection event handlers and return.
 	node.OnConnect(func(client *centrifuge.Client) {
 		// In our example transport will always be Websocket but it can also be SockJS.
 		transportName := client.Transport().Name()
@@ -111,8 +122,8 @@ func main() {
 		log.Printf("client connected via %s (%s)", transportName, transportProto)
 
 		// Set SubscribeHandler to react on every channel subscription attempt
-		// initiated by client. Here you can theoretically return an error or
-		// disconnect client from server if needed. But now we just accept
+		// initiated by a client. Here you can theoretically return an error or
+		// disconnect a client from a server if needed. But here we just accept
 		// all subscriptions to all channels. In real life you may use a more
 		// complex permission check here. The reason why we use callback style
 		// inside client event handlers is that it gives a possibility to control
@@ -123,12 +134,13 @@ func main() {
 		})
 
 		// By default, clients can not publish messages into channels. By setting
-		// PublishHandler we tell Centrifuge that publish from client side is possible.
-		// Now each time client calls publish method this handler will be called and
-		// you have a possibility to validate publication request. After returning 
-		// Publication will be published to channel and reach active subscribers with
-		// at most once delivery guarantee. In our simple chat app we allow everyone 
-		// to publish into any channel but in real case you may have more validation.
+		// PublishHandler we tell Centrifuge that publish from a client-side is
+		// possible. Now each time client calls publish method this handler will be
+		// called and you have a possibility to validate publication request. After
+		// returning from this handler Publication will be published to a channel and
+		// reach active subscribers with at most once delivery guarantee. In our simple
+		// chat app we allow everyone to publish into any channel but in real case
+		// you may have more validation.
 		client.OnPublish(func(e centrifuge.PublishEvent, cb centrifuge.PublishCallback) {
 			log.Printf("client publishes into channel %s: %s", e.Channel, string(e.Data))
 			cb(centrifuge.PublishReply{}, nil)
@@ -213,9 +225,9 @@ go run main.go
 
 Open several browser tabs with http://localhost:8000 and see chat in action.
 
-This example is only the top of an iceberg. Though it should give you an insight on library API.
+While this example is only the top of an iceberg, it should give you a good insight on library API. Check out [examples](https://github.com/centrifugal/centrifuge/tree/master/_examples) folder for more.
 
-Keep in mind that Centrifuge library is not a framework to build chat apps. It's a general purpose real-time transport for your messages with some helpful primitives. You can build many kinds of real-time apps on top of this library including chats but depending on application you may need to write business logic yourself.
+Keep in mind that Centrifuge library is not a framework to build chat applications. It's a **general purpose real-time transport** for your messages with some helpful primitives. You can build many kinds of real-time apps on top of this library including chats but depending on application you may need to write business logic yourself.
 
 ### Tips and tricks
 
@@ -235,9 +247,9 @@ Let's describe some aspects related to connection life cycle and event handling 
 
 #### Channel history stream
 
-Centrifuge Broker interface supports saving Publication to history stream on publish. Depending on broker implementation this feature can be missing though. Builtin Memory and Redis engines support keeping Publication stream.
+Centrifuge `Broker` interface supports saving `Publication` to history stream on publish. Depending on Broker implementation this feature can be missing though. Builtin Memory and Redis brokers support keeping Publication stream.
 
-When using default `MemoryEngine` Publication stream kept in process memory and lost as soon as process restarts. `RedisEngine` keeps Publication stream in Redis LIST or STREAM data structures – reliability inherited from Redis configuration in this case.
+When using default `MemoryBroker` Publication stream kept in process memory and lost as soon as process restarts. `RedisBroker` keeps Publication stream in Redis LIST or STREAM data structures – reliability inherited from Redis configuration in this case.
 
 Centrifuge library publication stream not meant to be used as the only source of missed Publications for a client. It mostly exists to help many clients reconnect at once (load balancer reload, application deploy) without creating a massive spike in load on your main application database. So application database still required in idiomatic use case.
 

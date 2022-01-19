@@ -1,22 +1,21 @@
-import React, { useCallback, useMemo } from 'react';
-import { FieldType, PanelProps, VizOrientation } from '@grafana/data';
-import { BarChart, BarChartOptions, GraphNGLegendEvent } from '@grafana/ui';
-import { changeSeriesColorConfigFactory } from '../timeseries/overrides/colorSeriesConfigFactory';
-import { hideSeriesConfigFactory } from '../timeseries/overrides/hideSeriesConfigFactory';
+import React, { useMemo } from 'react';
+import { TooltipDisplayMode, StackingMode } from '@grafana/schema';
+import { PanelProps, TimeRange, VizOrientation } from '@grafana/data';
+import { measureText, TooltipPlugin, UPLOT_AXIS_FONT_SIZE, useTheme2 } from '@grafana/ui';
+import { BarChartOptions } from './types';
+import { BarChart } from './BarChart';
+import { prepareGraphableFrames } from './utils';
+import { PanelDataErrorView } from '@grafana/runtime';
 
 interface Props extends PanelProps<BarChartOptions> {}
 
 /**
  * @alpha
  */
-export const BarChartPanel: React.FunctionComponent<Props> = ({
-  data,
-  options,
-  width,
-  height,
-  fieldConfig,
-  onFieldConfigChange,
-}) => {
+export const BarChartPanel: React.FunctionComponent<Props> = ({ data, options, width, height, timeZone, id }) => {
+  const theme = useTheme2();
+
+  const frames = useMemo(() => prepareGraphableFrames(data?.series, theme, options), [data, theme, options]);
   const orientation = useMemo(() => {
     if (!options.orientation || options.orientation === VizOrientation.Auto) {
       return width < height ? VizOrientation.Horizontal : VizOrientation.Vertical;
@@ -25,60 +24,50 @@ export const BarChartPanel: React.FunctionComponent<Props> = ({
     return options.orientation;
   }, [width, height, options.orientation]);
 
-  const onLegendClick = useCallback(
-    (event: GraphNGLegendEvent) => {
-      onFieldConfigChange(hideSeriesConfigFactory(event, fieldConfig, data.series));
-    },
-    [fieldConfig, onFieldConfigChange, data.series]
-  );
+  const xTickLabelMaxLength = useMemo(() => {
+    // If no max length is set, limit the number of characters to a length where it will use a maximum of half of the height of the viz.
+    if (!options.xTickLabelMaxLength) {
+      const rotationAngle = options.xTickLabelRotation;
+      const textSize = measureText('M', UPLOT_AXIS_FONT_SIZE).width; // M is usually the widest character so let's use that as an aproximation.
+      const maxHeightForValues = height / 2;
 
-  const onSeriesColorChange = useCallback(
-    (label: string, color: string) => {
-      onFieldConfigChange(changeSeriesColorConfigFactory(label, color, fieldConfig));
-    },
-    [fieldConfig, onFieldConfigChange]
-  );
+      return (
+        maxHeightForValues /
+          (Math.sin(((rotationAngle >= 0 ? rotationAngle : rotationAngle * -1) * Math.PI) / 180) * textSize) -
+        3 //Subtract 3 for the "..." added to the end.
+      );
+    } else {
+      return options.xTickLabelMaxLength;
+    }
+  }, [height, options.xTickLabelRotation, options.xTickLabelMaxLength]);
 
-  if (!data || !data.series?.length) {
-    return (
-      <div className="panel-empty">
-        <p>No data found in response</p>
-      </div>
-    );
-  }
+  // Force 'multi' tooltip setting or stacking mode
+  const tooltip = useMemo(() => {
+    if (options.stacking === StackingMode.Normal || options.stacking === StackingMode.Percent) {
+      return { ...options.tooltip, mode: TooltipDisplayMode.Multi };
+    }
+    return options.tooltip;
+  }, [options.tooltip, options.stacking]);
 
-  const firstFrame = data.series[0];
-  if (!firstFrame.fields.find((f) => f.type === FieldType.string)) {
-    return (
-      <div className="panel-empty">
-        <p>Bar charts requires a string field</p>
-      </div>
-    );
-  }
-  if (
-    firstFrame.fields.reduce((acc, f) => {
-      if (f.type === FieldType.number) {
-        return acc + 1;
-      }
-      return acc;
-    }, 0) < 2
-  ) {
-    return (
-      <div className="panel-empty">
-        <p>No numeric fields found</p>
-      </div>
-    );
+  if (!frames) {
+    return <PanelDataErrorView panelId={id} data={data} needsStringField={true} needsNumberField={true} />;
   }
 
   return (
     <BarChart
-      data={data.series}
+      frames={frames}
+      timeZone={timeZone}
+      timeRange={({ from: 1, to: 1 } as unknown) as TimeRange} // HACK
+      structureRev={data.structureRev}
       width={width}
       height={height}
-      onLegendClick={onLegendClick}
-      onSeriesColorChange={onSeriesColorChange}
       {...options}
       orientation={orientation}
-    />
+      xTickLabelMaxLength={xTickLabelMaxLength}
+    >
+      {(config, alignedFrame) => {
+        return <TooltipPlugin data={alignedFrame} config={config} mode={tooltip.mode} timeZone={timeZone} />;
+      }}
+    </BarChart>
   );
 };
