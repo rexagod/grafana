@@ -1,13 +1,11 @@
 package teamguardian
 
 import (
-	"context"
-
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
 )
 
-func CanAdmin(ctx context.Context, bus bus.Bus, orgId int64, teamId int64, user *models.SignedInUser) error {
+func CanAdmin(bus bus.Bus, orgId int64, teamId int64, user *models.SignedInUser) error {
 	if user.OrgRole == models.ROLE_ADMIN {
 		return nil
 	}
@@ -22,7 +20,7 @@ func CanAdmin(ctx context.Context, bus bus.Bus, orgId int64, teamId int64, user 
 		UserId: user.UserId,
 	}
 
-	if err := bus.DispatchCtx(ctx, &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return err
 	}
 

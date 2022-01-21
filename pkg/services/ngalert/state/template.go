@@ -54,7 +54,7 @@ func expandTemplate(name, text string, labels map[string]string, alertInstance e
 			return nil, nil
 		},
 		externalURL,
-		[]string{"missingkey=invalid"},
+		[]string{"missingkey=error"},
 	)
 
 	expander.Funcs(text_template.FuncMap{

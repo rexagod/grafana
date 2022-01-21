@@ -893,11 +893,7 @@ func (g *GrafanaLive) ClientCount(orgID int64, channel string) (int, error) {
 	return len(p.Presence), nil
 }
 
-func (g *GrafanaLive) HandleHTTPPublish(ctx *models.ReqContext) response.Response {
-	cmd := dtos.LivePublishCmd{}
-	if err := web.Bind(ctx.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (g *GrafanaLive) HandleHTTPPublish(ctx *models.ReqContext, cmd dtos.LivePublishCmd) response.Response {
 	addr, err := live.ParseChannel(cmd.Channel)
 	if err != nil {
 		return response.Error(http.StatusBadRequest, "invalid channel ID", nil)

@@ -1,6 +1,7 @@
 package sqleng
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"testing"
@@ -10,9 +11,11 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana-plugin-sdk-go/data/sqlutil"
 	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/tsdb/legacydata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xorcare/pointer"
+	"xorm.io/core"
 )
 
 func TestSQLEngine(t *testing.T) {
@@ -415,6 +418,10 @@ func TestSQLEngine(t *testing.T) {
 
 type testQueryResultTransformer struct {
 	transformQueryErrorWasCalled bool
+}
+
+func (t *testQueryResultTransformer) TransformQueryResult(columnTypes []*sql.ColumnType, rows *core.Rows) (legacydata.DataRowValues, error) {
+	return nil, nil
 }
 
 func (t *testQueryResultTransformer) TransformQueryError(err error) error {

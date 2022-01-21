@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/grafana/grafana/pkg/api/apierrors"
@@ -59,11 +58,7 @@ func (hs *HTTPServer) GetFolderPermissionList(c *models.ReqContext) response.Res
 	return response.JSON(200, filteredAcls)
 }
 
-func (hs *HTTPServer) UpdateFolderPermissions(c *models.ReqContext) response.Response {
-	apiCmd := dtos.UpdateDashboardAclCommand{}
-	if err := web.Bind(c.Req, &apiCmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateFolderPermissions(c *models.ReqContext, apiCmd dtos.UpdateDashboardAclCommand) response.Response {
 	if err := validatePermissionsUpdate(apiCmd); err != nil {
 		return response.Error(400, err.Error(), err)
 	}

@@ -14,8 +14,7 @@ func TestCreateLibraryElement(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to create a library panel that already exists, it should fail",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 400, resp.Status())
 		})
 
@@ -65,8 +64,7 @@ func TestCreateLibraryElement(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Nonexistent UID")
 			command.UID = util.GenerateShortUID()
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			var result = validateAndUnMarshalResponse(t, resp)
 			var expected = libraryElementResult{
 				Result: libraryElement{
@@ -112,8 +110,7 @@ func TestCreateLibraryElement(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Existing UID")
 			command.UID = sc.initialResult.Result.UID
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 400, resp.Status())
 		})
 
@@ -121,8 +118,7 @@ func TestCreateLibraryElement(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Invalid UID")
 			command.UID = "Testing an invalid UID"
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 400, resp.Status())
 		})
 
@@ -130,16 +126,14 @@ func TestCreateLibraryElement(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Invalid UID")
 			command.UID = "j6T00KRZzj6T00KRZzj6T00KRZzj6T00KRZzj6T00K"
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 400, resp.Status())
 		})
 
 	testScenario(t, "When an admin tries to create a library panel where name and panel title differ, it should not update panel title",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(1, "Library Panel Name")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			var result = validateAndUnMarshalResponse(t, resp)
 			var expected = libraryElementResult{
 				Result: libraryElement{

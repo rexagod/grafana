@@ -19,7 +19,6 @@ const (
 	attrEnumDefault = "enumDefault"
 	attrEnumMembers = "memberNames"
 	attrKind        = "kind"
-	attrForceText   = "forceText"
 )
 
 type tsKind string
@@ -569,10 +568,7 @@ func tsPrintDefault(v cue.Value) (bool, string, error) {
 		}
 		result = dStr
 		if isReference(d) {
-			// FIXME this is just horrifingly coarse guessing, ugh we need an AST
-			parts := strings.Split(result, ".")
-			parts[len(parts)-1] = "default" + parts[len(parts)-1]
-			result = strings.Join(parts, ".")
+			result = "default" + result
 		}
 		return true, result, nil
 	}
@@ -582,11 +578,6 @@ func tsPrintDefault(v cue.Value) (bool, string, error) {
 // Render a string containing a Typescript semantic equivalent to the provided
 // Value for placement in a single field, if possible.
 func tsprintField(v cue.Value, nestedLevel int) (string, error) {
-	// Let the forceText attribute supersede everything.
-	if ft := getForceText(v); ft != "" {
-		return ft, nil
-	}
-
 	// References are orthogonal to the Kind system. Handle them first.
 	path, err := referenceValueAs(v)
 	if err != nil {
@@ -818,27 +809,6 @@ func getKindFor(v cue.Value) (tsKind, error) {
 		return "", valError(v, "no value for the %q key in @%s attribute", attrKind, attrname)
 	}
 	return tsKind(tt), nil
-}
-
-func getForceText(v cue.Value) string {
-	var found bool
-	var attr cue.Attribute
-	for _, a := range v.Attributes(cue.ValueAttr) {
-		if a.Name() == attrname {
-			found = true
-			attr = a
-		}
-	}
-	if !found {
-		return ""
-	}
-
-	ft, found, err := attr.Lookup(0, attrForceText)
-	if err != nil || !found {
-		return ""
-	}
-
-	return ft
 }
 
 func targetsKind(v cue.Value, kinds ...tsKind) bool {

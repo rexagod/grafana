@@ -40,7 +40,6 @@ const (
 	serverError500Query               queryType = "server_error_500"
 	logsQuery                         queryType = "logs"
 	nodeGraphQuery                    queryType = "node_graph"
-	rawFrameQuery                     queryType = "raw_frame"
 	csvFileQueryType                  queryType = "csv_file"
 	csvContentQueryType               queryType = "csv_content"
 )
@@ -191,11 +190,6 @@ Timestamps will line up evenly on timeStepSeconds (For example, 60 seconds means
 	s.registerScenario(&Scenario{
 		ID:   string(nodeGraphQuery),
 		Name: "Node Graph",
-	})
-
-	s.registerScenario(&Scenario{
-		ID:   string(rawFrameQuery),
-		Name: "Raw Frame",
 	})
 
 	s.registerScenario(&Scenario{

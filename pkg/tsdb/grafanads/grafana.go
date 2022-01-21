@@ -32,8 +32,6 @@ const DatasourceID = -1
 // Grafana DS command.
 const DatasourceUID = "grafana"
 
-const pluginID = "grafana"
-
 // Make sure Service implements required interfaces.
 // This is important to do since otherwise we will only get a
 // not implemented error response from plugin at runtime.
@@ -43,13 +41,13 @@ var (
 	logger                            = log.New("tsdb.grafana")
 )
 
-func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) *Service {
-	return newService(cfg, pluginStore)
+func ProvideService(cfg *setting.Cfg, registrar plugins.CoreBackendRegistrar) *Service {
+	return newService(cfg.StaticRootPath, registrar)
 }
 
-func newService(cfg *setting.Cfg, pluginStore plugins.Store) *Service {
+func newService(staticRootPath string, registrar plugins.CoreBackendRegistrar) *Service {
 	s := &Service{
-		staticRootPath: cfg.StaticRootPath,
+		staticRootPath: staticRootPath,
 		roots: []string{
 			"testdata",
 			"img/icons",
@@ -59,11 +57,10 @@ func newService(cfg *setting.Cfg, pluginStore plugins.Store) *Service {
 		},
 	}
 
-	resolver := plugins.CoreDataSourcePathResolver(cfg, pluginID)
-	if err := pluginStore.AddWithFactory(context.Background(), pluginID, coreplugin.New(backend.ServeOpts{
+	if err := registrar.LoadAndRegister("grafana", coreplugin.New(backend.ServeOpts{
 		CheckHealthHandler: s,
 		QueryDataHandler:   s,
-	}), resolver); err != nil {
+	})); err != nil {
 		logger.Error("Failed to register plugin", "error", err)
 		return nil
 	}

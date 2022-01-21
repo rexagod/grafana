@@ -64,11 +64,10 @@ func createShortURLScenario(t *testing.T, desc string, url string, routePattern 
 
 		sc := setupScenarioContext(t, url)
 		sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) response.Response {
-			c.Req.Body = mockRequestBody(cmd)
 			sc.context = c
 			sc.context.SignedInUser = &models.SignedInUser{OrgId: testOrgID, UserId: testUserID}
 
-			return hs.createShortURL(c)
+			return hs.createShortURL(c, cmd)
 		})
 
 		sc.m.Post(routePattern, sc.defaultHandler)

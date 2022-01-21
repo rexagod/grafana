@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
@@ -133,11 +132,7 @@ func GetAlerts(c *models.ReqContext) response.Response {
 }
 
 // POST /api/alerts/test
-func (hs *HTTPServer) AlertTest(c *models.ReqContext) response.Response {
-	dto := dtos.AlertTestCommand{}
-	if err := web.Bind(c.Req, &dto); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) AlertTest(c *models.ReqContext, dto dtos.AlertTestCommand) response.Response {
 	if _, idErr := dto.Dashboard.Get("id").Int64(); idErr != nil {
 		return response.Error(400, "The dashboard needs to be saved at least once before you can test an alert rule", nil)
 	}
@@ -281,11 +276,7 @@ func GetAlertNotificationByUID(c *models.ReqContext) response.Response {
 	return response.JSON(200, dtos.NewAlertNotification(query.Result))
 }
 
-func CreateAlertNotification(c *models.ReqContext) response.Response {
-	cmd := models.CreateAlertNotificationCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func CreateAlertNotification(c *models.ReqContext, cmd models.CreateAlertNotificationCommand) response.Response {
 	cmd.OrgId = c.OrgId
 
 	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
@@ -302,11 +293,7 @@ func CreateAlertNotification(c *models.ReqContext) response.Response {
 	return response.JSON(200, dtos.NewAlertNotification(cmd.Result))
 }
 
-func (hs *HTTPServer) UpdateAlertNotification(c *models.ReqContext) response.Response {
-	cmd := models.UpdateAlertNotificationCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateAlertNotification(c *models.ReqContext, cmd models.UpdateAlertNotificationCommand) response.Response {
 	cmd.OrgId = c.OrgId
 
 	err := hs.fillWithSecureSettingsData(c.Req.Context(), &cmd)
@@ -337,11 +324,7 @@ func (hs *HTTPServer) UpdateAlertNotification(c *models.ReqContext) response.Res
 	return response.JSON(200, dtos.NewAlertNotification(query.Result))
 }
 
-func (hs *HTTPServer) UpdateAlertNotificationByUID(c *models.ReqContext) response.Response {
-	cmd := models.UpdateAlertNotificationWithUidCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateAlertNotificationByUID(c *models.ReqContext, cmd models.UpdateAlertNotificationWithUidCommand) response.Response {
 	cmd.OrgId = c.OrgId
 	cmd.Uid = web.Params(c.Req)[":uid"]
 
@@ -461,11 +444,7 @@ func DeleteAlertNotificationByUID(c *models.ReqContext) response.Response {
 }
 
 // POST /api/alert-notifications/test
-func NotificationTest(c *models.ReqContext) response.Response {
-	dto := dtos.NotificationTestCommand{}
-	if err := web.Bind(c.Req, &dto); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func NotificationTest(c *models.ReqContext, dto dtos.NotificationTestCommand) response.Response {
 	cmd := &alerting.NotificationTestCommand{
 		OrgID:          c.OrgId,
 		ID:             dto.ID,
@@ -491,11 +470,7 @@ func NotificationTest(c *models.ReqContext) response.Response {
 }
 
 // POST /api/alerts/:alertId/pause
-func PauseAlert(c *models.ReqContext) response.Response {
-	dto := dtos.PauseAlertCommand{}
-	if err := web.Bind(c.Req, &dto); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func PauseAlert(c *models.ReqContext, dto dtos.PauseAlertCommand) response.Response {
 	alertID := c.ParamsInt64(":alertId")
 	result := make(map[string]interface{})
 	result["alertId"] = alertID
@@ -548,11 +523,7 @@ func PauseAlert(c *models.ReqContext) response.Response {
 }
 
 // POST /api/admin/pause-all-alerts
-func PauseAllAlerts(c *models.ReqContext) response.Response {
-	dto := dtos.PauseAllAlertsCommand{}
-	if err := web.Bind(c.Req, &dto); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func PauseAllAlerts(c *models.ReqContext, dto dtos.PauseAllAlertsCommand) response.Response {
 	updateCmd := models.PauseAllAlertCommand{
 		Paused: dto.Paused,
 	}

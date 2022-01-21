@@ -2,12 +2,10 @@ package manager
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/grafana/grafana/pkg/plugins"
-	"github.com/grafana/grafana/pkg/plugins/backendplugin"
 )
 
 func (m *PluginManager) Plugin(_ context.Context, pluginID string) (plugins.PluginDTO, bool) {
@@ -40,8 +38,12 @@ func (m *PluginManager) Plugins(_ context.Context, pluginTypes ...plugins.Type) 
 	return pluginsList
 }
 
-func (m *PluginManager) Add(ctx context.Context, pluginID, version string) error {
+func (m *PluginManager) Add(ctx context.Context, pluginID, version string, opts plugins.AddOpts) error {
 	var pluginZipURL string
+
+	if opts.PluginRepoURL == "" {
+		opts.PluginRepoURL = grafanaComURL
+	}
 
 	if plugin, exists := m.plugin(pluginID); exists {
 		if !plugin.IsExternalPlugin() {
@@ -56,7 +58,7 @@ func (m *PluginManager) Add(ctx context.Context, pluginID, version string) error
 		}
 
 		// get plugin update information to confirm if upgrading is possible
-		updateInfo, err := m.pluginInstaller.GetUpdateInfo(ctx, pluginID, version, grafanaComURL)
+		updateInfo, err := m.pluginInstaller.GetUpdateInfo(ctx, pluginID, version, opts.PluginRepoURL)
 		if err != nil {
 			return err
 		}
@@ -70,38 +72,24 @@ func (m *PluginManager) Add(ctx context.Context, pluginID, version string) error
 		}
 	}
 
-	err := m.pluginInstaller.Install(ctx, pluginID, version, m.cfg.PluginsPath, pluginZipURL, grafanaComURL)
+	if opts.PluginInstallDir == "" {
+		opts.PluginInstallDir = m.cfg.PluginsPath
+	}
+
+	if opts.PluginZipURL == "" {
+		opts.PluginZipURL = pluginZipURL
+	}
+
+	err := m.pluginInstaller.Install(ctx, pluginID, version, opts.PluginInstallDir, opts.PluginZipURL, opts.PluginRepoURL)
 	if err != nil {
 		return err
 	}
 
-	err = m.loadPlugins(m.cfg.PluginsPath)
+	err = m.loadPlugins(opts.PluginInstallDir)
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (m *PluginManager) AddWithFactory(_ context.Context, pluginID string, factory backendplugin.PluginFactoryFunc,
-	pathResolver plugins.PluginPathResolver) error {
-	if m.isRegistered(pluginID) {
-		return fmt.Errorf("plugin %s is already registered", pluginID)
-	}
-
-	path, err := pathResolver()
-	if err != nil {
-		return err
-	}
-
-	p, err := m.pluginLoader.LoadWithFactory(path, factory)
-	if err != nil {
-		return err
-	}
-	err = m.register(p)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

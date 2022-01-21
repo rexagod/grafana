@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/grafana/pkg/bus"
+	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
@@ -14,12 +15,17 @@ import (
 	"github.com/grafana/grafana/pkg/util"
 )
 
-func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins EnabledPlugins) (map[string]plugins.DataSourceDTO, error) {
+type PreloadPlugin struct {
+	Path    string `json:"path"`
+	Version string `json:"version"`
+}
+
+func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins EnabledPlugins) (map[string]interface{}, error) {
 	orgDataSources := make([]*models.DataSource, 0)
 
 	if c.OrgId != 0 {
 		query := models.GetDataSourcesQuery{OrgId: c.OrgId, DataSourceLimit: hs.Cfg.DataSourceLimit}
-		err := bus.DispatchCtx(c.Req.Context(), &query)
+		err := bus.Dispatch(&query)
 
 		if err != nil {
 			return nil, err
@@ -30,7 +36,7 @@ func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins Enab
 			Datasources: query.Result,
 		}
 
-		if err := bus.DispatchCtx(c.Req.Context(), &dsFilterQuery); err != nil {
+		if err := bus.Dispatch(&dsFilterQuery); err != nil {
 			if !errors.Is(err, bus.ErrHandlerNotFound) {
 				return nil, err
 			}
@@ -41,7 +47,7 @@ func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins Enab
 		}
 	}
 
-	dataSources := make(map[string]plugins.DataSourceDTO)
+	dataSources := make(map[string]interface{})
 
 	for _, ds := range orgDataSources {
 		url := ds.Url
@@ -50,81 +56,81 @@ func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins Enab
 			url = "/api/datasources/proxy/" + strconv.FormatInt(ds.Id, 10)
 		}
 
-		dsDTO := plugins.DataSourceDTO{
-			ID:        ds.Id,
-			UID:       ds.Uid,
-			Type:      ds.Type,
-			Name:      ds.Name,
-			URL:       url,
-			IsDefault: ds.IsDefault,
-			Access:    string(ds.Access),
+		dsMap := map[string]interface{}{
+			"id":        ds.Id,
+			"uid":       ds.Uid,
+			"type":      ds.Type,
+			"name":      ds.Name,
+			"url":       url,
+			"isDefault": ds.IsDefault,
+			"access":    ds.Access,
 		}
 
-		plugin, exists := enabledPlugins.Get(plugins.DataSource, ds.Type)
+		meta, exists := enabledPlugins.Get(plugins.DataSource, ds.Type)
 		if !exists {
 			c.Logger.Error("Could not find plugin definition for data source", "datasource_type", ds.Type)
 			continue
 		}
-		dsDTO.Preload = plugin.Preload
-		dsDTO.Module = plugin.Module
-		dsDTO.PluginMeta = &plugins.PluginMetaDTO{
-			JSONData:  plugin.JSONData,
-			Signature: plugin.Signature,
-			Module:    plugin.Module,
-			BaseURL:   plugin.BaseURL,
+		dsMap["preload"] = meta.Preload
+		dsMap["module"] = meta.Module
+		dsMap["meta"] = &plugins.PluginMetaDTO{
+			JSONData:  meta.JSONData,
+			Signature: meta.Signature,
+			Module:    meta.Module,
+			BaseURL:   meta.BaseURL,
 		}
 
-		if ds.JsonData == nil {
-			dsDTO.JSONData = make(map[string]interface{})
-		} else {
-			dsDTO.JSONData = ds.JsonData.MustMap()
+		jsonData := ds.JsonData
+		if jsonData == nil {
+			jsonData = simplejson.New()
 		}
+
+		dsMap["jsonData"] = jsonData
 
 		if ds.Access == models.DS_ACCESS_DIRECT {
 			if ds.BasicAuth {
-				dsDTO.BasicAuth = util.GetBasicAuthHeader(
+				dsMap["basicAuth"] = util.GetBasicAuthHeader(
 					ds.BasicAuthUser,
 					hs.DataSourcesService.DecryptedBasicAuthPassword(ds),
 				)
 			}
 			if ds.WithCredentials {
-				dsDTO.WithCredentials = ds.WithCredentials
+				dsMap["withCredentials"] = ds.WithCredentials
 			}
 
 			if ds.Type == models.DS_INFLUXDB_08 {
-				dsDTO.Username = ds.User
-				dsDTO.Password = hs.DataSourcesService.DecryptedPassword(ds)
-				dsDTO.URL = url + "/db/" + ds.Database
+				dsMap["username"] = ds.User
+				dsMap["password"] = hs.DataSourcesService.DecryptedPassword(ds)
+				dsMap["url"] = url + "/db/" + ds.Database
 			}
 
 			if ds.Type == models.DS_INFLUXDB {
-				dsDTO.Username = ds.User
-				dsDTO.Password = hs.DataSourcesService.DecryptedPassword(ds)
-				dsDTO.URL = url
+				dsMap["username"] = ds.User
+				dsMap["password"] = hs.DataSourcesService.DecryptedPassword(ds)
+				dsMap["url"] = url
 			}
 		}
 
 		if (ds.Type == models.DS_INFLUXDB) || (ds.Type == models.DS_ES) {
-			dsDTO.Database = ds.Database
+			dsMap["database"] = ds.Database
 		}
 
 		if ds.Type == models.DS_PROMETHEUS {
 			// add unproxied server URL for link to Prometheus web UI
-			ds.JsonData.Set("directUrl", ds.Url)
+			jsonData.Set("directUrl", ds.Url)
 		}
 
-		dataSources[ds.Name] = dsDTO
+		dataSources[ds.Name] = dsMap
 	}
 
 	// add data sources that are built in (meaning they are not added via data sources page, nor have any entry in
 	// the datasource table)
 	for _, ds := range hs.pluginStore.Plugins(c.Req.Context(), plugins.DataSource) {
 		if ds.BuiltIn {
-			dto := plugins.DataSourceDTO{
-				Type:     string(ds.Type),
-				Name:     ds.Name,
-				JSONData: make(map[string]interface{}),
-				PluginMeta: &plugins.PluginMetaDTO{
+			info := map[string]interface{}{
+				"type": ds.Type,
+				"name": ds.Name,
+				"meta": &plugins.PluginMetaDTO{
 					JSONData:  ds.JSONData,
 					Signature: ds.Signature,
 					Module:    ds.Module,
@@ -132,10 +138,10 @@ func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins Enab
 				},
 			}
 			if ds.Name == grafanads.DatasourceName {
-				dto.ID = grafanads.DatasourceID
-				dto.UID = grafanads.DatasourceUID
+				info["id"] = grafanads.DatasourceID
+				info["uid"] = grafanads.DatasourceUID
 			}
-			dataSources[ds.Name] = dto
+			dataSources[ds.Name] = info
 		}
 	}
 
@@ -149,10 +155,10 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		return nil, err
 	}
 
-	pluginsToPreload := make([]*plugins.PreloadPlugin, 0)
+	pluginsToPreload := make([]*PreloadPlugin, 0)
 	for _, app := range enabledPlugins[plugins.App] {
 		if app.Preload {
-			pluginsToPreload = append(pluginsToPreload, &plugins.PreloadPlugin{
+			pluginsToPreload = append(pluginsToPreload, &PreloadPlugin{
 				Path:    app.Module,
 				Version: app.Info.Version,
 			})
@@ -166,28 +172,29 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 
 	defaultDS := "-- Grafana --"
 	for n, ds := range dataSources {
-		if ds.IsDefault {
+		dsM := ds.(map[string]interface{})
+		if isDefault, _ := dsM["isDefault"].(bool); isDefault {
 			defaultDS = n
 		}
 	}
 
-	panels := make(map[string]plugins.PanelDTO)
+	panels := map[string]interface{}{}
 	for _, panel := range enabledPlugins[plugins.Panel] {
 		if panel.State == plugins.AlphaRelease && !hs.Cfg.PluginsEnableAlpha {
 			continue
 		}
 
-		panels[panel.ID] = plugins.PanelDTO{
-			ID:            panel.ID,
-			Name:          panel.Name,
-			Info:          panel.Info,
-			Module:        panel.Module,
-			BaseURL:       panel.BaseURL,
-			SkipDataQuery: panel.SkipDataQuery,
-			HideFromList:  panel.HideFromList,
-			ReleaseState:  string(panel.State),
-			Signature:     string(panel.Signature),
-			Sort:          getPanelSort(panel.ID),
+		panels[panel.ID] = map[string]interface{}{
+			"id":            panel.ID,
+			"module":        panel.Module,
+			"baseUrl":       panel.BaseURL,
+			"name":          panel.Name,
+			"info":          panel.Info,
+			"hideFromList":  panel.HideFromList,
+			"sort":          getPanelSort(panel.ID),
+			"skipDataQuery": panel.SkipDataQuery,
+			"state":         panel.State,
+			"signature":     panel.Signature,
 		}
 	}
 
@@ -226,8 +233,6 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		"googleAnalyticsId":                   setting.GoogleAnalyticsId,
 		"rudderstackWriteKey":                 setting.RudderstackWriteKey,
 		"rudderstackDataPlaneUrl":             setting.RudderstackDataPlaneUrl,
-		"rudderstackSdkUrl":                   setting.RudderstackSdkUrl,
-		"rudderstackConfigUrl":                setting.RudderstackConfigUrl,
 		"applicationInsightsConnectionString": hs.Cfg.ApplicationInsightsConnectionString,
 		"applicationInsightsEndpointUrl":      hs.Cfg.ApplicationInsightsEndpointUrl,
 		"disableLoginForm":                    setting.DisableLoginForm,

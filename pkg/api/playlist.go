@@ -1,19 +1,15 @@
 package api
 
 import (
-	"context"
-	"net/http"
-
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/web"
 )
 
 func ValidateOrgPlaylist(c *models.ReqContext) {
 	id := c.ParamsInt64(":id")
 	query := models.GetPlaylistByIdQuery{Id: id}
-	err := bus.DispatchCtx(c.Req.Context(), &query)
+	err := bus.Dispatch(&query)
 
 	if err != nil {
 		c.JsonApiErr(404, "Playlist not found", err)
@@ -45,7 +41,7 @@ func SearchPlaylists(c *models.ReqContext) response.Response {
 		OrgId: c.OrgId,
 	}
 
-	err := bus.DispatchCtx(c.Req.Context(), &searchQuery)
+	err := bus.Dispatch(&searchQuery)
 	if err != nil {
 		return response.Error(500, "Search failed", err)
 	}
@@ -57,11 +53,11 @@ func GetPlaylist(c *models.ReqContext) response.Response {
 	id := c.ParamsInt64(":id")
 	cmd := models.GetPlaylistByIdQuery{Id: id}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return response.Error(500, "Playlist not found", err)
 	}
 
-	playlistDTOs, _ := LoadPlaylistItemDTOs(c.Req.Context(), id)
+	playlistDTOs, _ := LoadPlaylistItemDTOs(id)
 
 	dto := &models.PlaylistDTO{
 		Id:       cmd.Result.Id,
@@ -74,8 +70,8 @@ func GetPlaylist(c *models.ReqContext) response.Response {
 	return response.JSON(200, dto)
 }
 
-func LoadPlaylistItemDTOs(ctx context.Context, id int64) ([]models.PlaylistItemDTO, error) {
-	playlistitems, err := LoadPlaylistItems(ctx, id)
+func LoadPlaylistItemDTOs(id int64) ([]models.PlaylistItemDTO, error) {
+	playlistitems, err := LoadPlaylistItems(id)
 
 	if err != nil {
 		return nil, err
@@ -97,9 +93,9 @@ func LoadPlaylistItemDTOs(ctx context.Context, id int64) ([]models.PlaylistItemD
 	return playlistDTOs, nil
 }
 
-func LoadPlaylistItems(ctx context.Context, id int64) ([]models.PlaylistItem, error) {
+func LoadPlaylistItems(id int64) ([]models.PlaylistItem, error) {
 	itemQuery := models.GetPlaylistItemsByIdQuery{PlaylistId: id}
-	if err := bus.DispatchCtx(ctx, &itemQuery); err != nil {
+	if err := bus.Dispatch(&itemQuery); err != nil {
 		return nil, err
 	}
 
@@ -109,7 +105,7 @@ func LoadPlaylistItems(ctx context.Context, id int64) ([]models.PlaylistItem, er
 func GetPlaylistItems(c *models.ReqContext) response.Response {
 	id := c.ParamsInt64(":id")
 
-	playlistDTOs, err := LoadPlaylistItemDTOs(c.Req.Context(), id)
+	playlistDTOs, err := LoadPlaylistItemDTOs(id)
 
 	if err != nil {
 		return response.Error(500, "Could not load playlist items", err)
@@ -133,40 +129,32 @@ func DeletePlaylist(c *models.ReqContext) response.Response {
 	id := c.ParamsInt64(":id")
 
 	cmd := models.DeletePlaylistCommand{Id: id, OrgId: c.OrgId}
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return response.Error(500, "Failed to delete playlist", err)
 	}
 
 	return response.JSON(200, "")
 }
 
-func CreatePlaylist(c *models.ReqContext) response.Response {
-	cmd := models.CreatePlaylistCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func CreatePlaylist(c *models.ReqContext, cmd models.CreatePlaylistCommand) response.Response {
 	cmd.OrgId = c.OrgId
 
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return response.Error(500, "Failed to create playlist", err)
 	}
 
 	return response.JSON(200, cmd.Result)
 }
 
-func UpdatePlaylist(c *models.ReqContext) response.Response {
-	cmd := models.UpdatePlaylistCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdatePlaylist(c *models.ReqContext, cmd models.UpdatePlaylistCommand) response.Response {
 	cmd.OrgId = c.OrgId
 	cmd.Id = c.ParamsInt64(":id")
 
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return response.Error(500, "Failed to save playlist", err)
 	}
 
-	playlistDTOs, err := LoadPlaylistItemDTOs(c.Req.Context(), cmd.Id)
+	playlistDTOs, err := LoadPlaylistItemDTOs(cmd.Id)
 	if err != nil {
 		return response.Error(500, "Failed to save playlist", err)
 	}

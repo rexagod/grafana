@@ -37,8 +37,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all panel elements and both panels and variables exist, it should only return panels",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreateVariableCommand(sc.folder.Id, "query0")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -103,8 +102,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all variable elements and both panels and variables exist, it should only return panels",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreateVariableCommand(sc.folder.Id, "query0")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -168,8 +166,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist, it should succeed",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			resp = sc.service.getAllHandler(sc.reqContext)
@@ -265,8 +262,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and sort desc is set, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -373,8 +369,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 			  "description": "Gauge description"
 			}
 		`))
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			command = getCreateCommandWithModel(sc.folder.Id, "BarGauge - Library Panel", models.PanelElement, []byte(`
@@ -386,8 +381,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 			  "description": "BarGauge description"
 			}
 		`))
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp = sc.service.createHandler(sc.reqContext)
+			resp = sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -494,8 +488,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 			  "description": "Gauge description"
 			}
 		`))
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -524,8 +517,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			newFolder := createFolderWithACL(t, sc.sqlStore, "NewFolder", sc.user, []folderACLItem{})
 			command := getCreatePanelCommand(newFolder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 			folderFilter := strconv.FormatInt(newFolder.Id, 10)
 
@@ -591,8 +583,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 		func(t *testing.T, sc scenarioContext) {
 			newFolder := createFolderWithACL(t, sc.sqlStore, "NewFolder", sc.user, []folderACLItem{})
 			command := getCreatePanelCommand(newFolder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 			folderFilter := "2020,2021"
 
@@ -621,8 +612,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and folderFilter is set to General folder, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 			folderFilter := "0"
 
@@ -722,8 +712,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and excludeUID is set, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -787,8 +776,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and perPage is 1, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -852,8 +840,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and perPage is 1 and page is 2, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -926,8 +913,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 			  "description": "Some other d e s c r i p t i o n"
 			}
 		`))
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -1001,8 +987,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 			  "description": "A Library Panel"
 			}
 		`))
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -1101,8 +1086,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and perPage is 1 and page is 1 and searchString is panel2, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -1168,8 +1152,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and perPage is 1 and page is 3 and searchString is panel, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()
@@ -1199,8 +1182,7 @@ func TestGetAllLibraryElements(t *testing.T) {
 	scenarioWithPanel(t, "When an admin tries to get all library panels and two exist and perPage is 1 and page is 3 and searchString does not exist, it should succeed and the result should be correct",
 		func(t *testing.T, sc scenarioContext) {
 			command := getCreatePanelCommand(sc.folder.Id, "Text - Library Panel2")
-			sc.reqContext.Req.Body = mockRequestBody(command)
-			resp := sc.service.createHandler(sc.reqContext)
+			resp := sc.service.createHandler(sc.reqContext, command)
 			require.Equal(t, 200, resp.Status())
 
 			err := sc.reqContext.Req.ParseForm()

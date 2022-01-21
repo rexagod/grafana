@@ -6,11 +6,8 @@ load(
 
 load('scripts/drone/vault.star', 'from_secret', 'github_token', 'pull_secret', 'drone_token')
 
-failure_template = 'Build {{build.number}} failed for commit: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 8 }}>: {{build.link}}\nBranch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>\nAuthor: {{build.author}}'
-drone_change_template = '`.drone.yml` and `starlark` files have been changed on the OSS repo, by: {{build.author}}. \nBranch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>\nCommit hash: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 8 }}>'
-
 def pipeline(
-    name, edition, trigger, steps, services=[], platform='linux', depends_on=[],
+    name, edition, trigger, steps, services=[], platform='linux', depends_on=[], environment=None, volumes=[],
     ):
     if platform != 'windows':
         platform_conf = {
@@ -41,9 +38,6 @@ def pipeline(
         'services': services,
         'steps': steps,
         'volumes': [{
-            'name': 'cypress_cache',
-            'temp': {},
-        },{
             'name': 'docker',
             'host': {
                 'path': '/var/run/docker.sock',
@@ -51,6 +45,12 @@ def pipeline(
         }],
         'depends_on': depends_on,
     }
+    if environment:
+        pipeline.update({
+            'environment': environment,
+        })
+
+    pipeline['volumes'].extend(volumes)
     pipeline.update(platform_conf)
 
     if edition in ('enterprise', 'enterprise2'):
@@ -62,8 +62,8 @@ def pipeline(
 
     return pipeline
 
-def notify_pipeline(name, slack_channel, trigger, depends_on=[], template=None, secret=None):
-    trigger = dict(trigger)
+def notify_pipeline(name, slack_channel, trigger, depends_on=[]):
+    trigger = dict(trigger, status = ['failure'])
     return {
         'kind': 'pipeline',
         'type': 'docker',
@@ -74,7 +74,7 @@ def notify_pipeline(name, slack_channel, trigger, depends_on=[], template=None, 
         'name': name,
         'trigger': trigger,
         'steps': [
-            slack_step(slack_channel, template, secret),
+            slack_step(slack_channel),
         ],
         'depends_on': depends_on,
     }

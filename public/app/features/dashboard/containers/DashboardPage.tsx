@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { connect, ConnectedProps } from 'react-redux';
 import { locationService } from '@grafana/runtime';
 import { selectors } from '@grafana/e2e-selectors';
-import { CustomScrollbar, stylesFactory, Themeable2, withTheme2 } from '@grafana/ui';
+import { CustomScrollbar, ScrollbarPosition, stylesFactory, Themeable2, withTheme2 } from '@grafana/ui';
 
 import { createErrorNotification } from 'app/core/copy/appNotification';
 import { Branding } from 'app/core/components/Branding/Branding';
@@ -75,6 +75,7 @@ export type Props = Themeable2 &
 export interface State {
   editPanel: PanelModel | null;
   viewPanel: PanelModel | null;
+  scrollTop: number;
   updateScrollTop?: number;
   rememberScrollTop: number;
   showLoadingState: boolean;
@@ -91,6 +92,7 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
       editPanel: null,
       viewPanel: null,
       showLoadingState: false,
+      scrollTop: 0,
       rememberScrollTop: 0,
       panelNotFound: false,
       editPanelAccessDenied: false,
@@ -250,6 +252,7 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
       return {
         ...state,
         viewPanel: panel,
+        rememberScrollTop: state.scrollTop,
         updateScrollTop: 0,
       };
     }
@@ -269,6 +272,10 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
 
     return state;
   }
+
+  setScrollTop = ({ scrollTop }: ScrollbarPosition): void => {
+    this.setState({ scrollTop, updateScrollTop: undefined });
+  };
 
   onAddPanel = () => {
     const { dashboard } = this.props;
@@ -313,7 +320,7 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
 
   render() {
     const { dashboard, isInitSlow, initError, queryParams, theme } = this.props;
-    const { editPanel, viewPanel, updateScrollTop } = this.state;
+    const { editPanel, viewPanel, scrollTop, updateScrollTop } = this.state;
     const kioskMode = getKioskMode(queryParams.kiosk);
     const styles = getStyles(theme, kioskMode);
 
@@ -325,6 +332,8 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
       return null;
     }
 
+    // Only trigger render when the scroll has moved by 25
+    const approximateScrollTop = Math.round(scrollTop / 25) * 25;
     const inspectPanel = this.getInspectPanel();
     const containerClassNames = classnames(styles.dashboardContainer, {
       'panel-in-fullscreen': viewPanel,
@@ -352,6 +361,7 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
         <div className={styles.dashboardScroll}>
           <CustomScrollbar
             autoHeightMin="100%"
+            setScrollTop={this.setScrollTop}
             scrollTop={updateScrollTop}
             hideHorizontalTrack={true}
             updateAfterMountMs={500}
@@ -364,7 +374,12 @@ export class UnthemedDashboardPage extends PureComponent<Props, State> {
                 </section>
               )}
 
-              <DashboardGrid dashboard={dashboard} viewPanel={viewPanel} editPanel={editPanel} />
+              <DashboardGrid
+                dashboard={dashboard}
+                viewPanel={viewPanel}
+                editPanel={editPanel}
+                scrollTop={approximateScrollTop}
+              />
             </div>
           </CustomScrollbar>
         </div>

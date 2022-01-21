@@ -99,14 +99,6 @@ function unescapeMatcherValue(value: string) {
   return trimmed.replace(/\\"/g, '"');
 }
 
-function escapeMatcherValue(value: string) {
-  return '"' + value.replace(/"/g, '\\"') + '"';
-}
-
-export function stringifyMatcher(matcher: Matcher): string {
-  return `${matcher.name}${matcherToOperator(matcher)}${escapeMatcherValue(matcher.value)}`;
-}
-
 export function parseMatcher(matcher: string): Matcher {
   const trimmed = matcher.trim();
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
@@ -136,7 +128,7 @@ export function parseMatcher(matcher: string): Matcher {
 }
 
 export function parseMatchers(matcherQueryString: string): Matcher[] {
-  const matcherRegExp = /\b([\w.-]+)(=~|!=|!~|=(?="?\w))"?([^"\n,]*)"?/g;
+  const matcherRegExp = /\b(\w+)(=~|!=|!~|=(?="?\w))"?([^"\n,]*)"?/g;
   const matchers: Matcher[] = [];
 
   matcherQueryString.replace(matcherRegExp, (_, key, operator, value) => {

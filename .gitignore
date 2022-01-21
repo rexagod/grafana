@@ -150,6 +150,7 @@ compilation-stats.json
 /docs/sources/packages_api
 
 # auto generated Go files
-# *_gen.go
+*_gen.go
+!/pkg/**/*_gen.go
 
 deployment_tools_config.json

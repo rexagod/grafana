@@ -464,27 +464,6 @@ Analytics ID here. By default this feature is disabled.
 
 Google Tag Manager ID, only enabled if you enter an ID here.
 
-### rudderstack_write_key
-
-If you want to track Grafana usage via Rudderstack specify _your_ Rudderstack
-Write Key here. The `rudderstack_data_plane_url` must also be provided for this
-feature to be enabled. By default this feature is disabled.
-
-### rudderstack_data_plane_url
-
-Rudderstack data plane url that will receive Rudderstack events. The
-`rudderstack_write_key` must also be provided for this feature to be enabled.
-
-### rudderstack_sdk_url
-
-Optional. If tracking with Rudderstack is enabled, you can provide a custom
-URL to load the Rudderstack SDK.
-
-### rudderstack_config_url
-
-Optional. If tracking with Rudderstack is enabled, you can provide a custom
-URL to load the Rudderstack config.
-
 ### application_insights_connection_string
 
 If you want to track Grafana usage via Azure Application Insights, then specify _your_ Application Insights connection string. Since the connection string contains semicolons, you need to wrap it in backticks (`). By default, tracking usage is disabled.
@@ -631,7 +610,7 @@ Path to the default home dashboard. If this value is empty, then Grafana uses St
 
 Set to `false` to prohibit users from being able to sign up / create
 user accounts. Default is `false`. The admin user can still create
-users from the [Grafana Admin Pages](/reference/admin).
+users from the [Grafana Admin Pages]({{< relref "../manage-users/server-admin/server-admin-manage-users.md" >}}).
 
 ### allow_org_create
 

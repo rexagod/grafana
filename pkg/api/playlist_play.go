@@ -12,12 +12,12 @@ import (
 	"github.com/grafana/grafana/pkg/services/search"
 )
 
-func populateDashboardsByID(ctx context.Context, dashboardByIDs []int64, dashboardIDOrder map[int64]int) (dtos.PlaylistDashboardsSlice, error) {
+func populateDashboardsByID(dashboardByIDs []int64, dashboardIDOrder map[int64]int) (dtos.PlaylistDashboardsSlice, error) {
 	result := make(dtos.PlaylistDashboardsSlice, 0)
 
 	if len(dashboardByIDs) > 0 {
 		dashboardQuery := models.GetDashboardsQuery{DashboardIds: dashboardByIDs}
-		if err := bus.DispatchCtx(ctx, &dashboardQuery); err != nil {
+		if err := bus.Dispatch(&dashboardQuery); err != nil {
 			return result, err
 		}
 
@@ -67,7 +67,7 @@ func populateDashboardsByTag(ctx context.Context, orgID int64, signedInUser *mod
 }
 
 func LoadPlaylistDashboards(ctx context.Context, orgID int64, signedInUser *models.SignedInUser, playlistID int64) (dtos.PlaylistDashboardsSlice, error) {
-	playlistItems, _ := LoadPlaylistItems(ctx, playlistID)
+	playlistItems, _ := LoadPlaylistItems(playlistID)
 
 	dashboardByIDs := make([]int64, 0)
 	dashboardByTag := make([]string, 0)
@@ -89,7 +89,7 @@ func LoadPlaylistDashboards(ctx context.Context, orgID int64, signedInUser *mode
 
 	result := make(dtos.PlaylistDashboardsSlice, 0)
 
-	var k, _ = populateDashboardsByID(ctx, dashboardByIDs, dashboardIDOrder)
+	var k, _ = populateDashboardsByID(dashboardByIDs, dashboardIDOrder)
 	result = append(result, k...)
 	result = append(result, populateDashboardsByTag(ctx, orgID, signedInUser, dashboardByTag, dashboardTagOrder)...)
 

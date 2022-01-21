@@ -108,7 +108,6 @@ func jsonDocToFrame(name string, body []byte, fields map[string]Field, nowTimeFu
 	}
 
 	f := data.NewFieldFromFieldType(data.FieldTypeTime, 1)
-	f.Name = "Time"
 	f.Set(0, nowTimeFunc())
 	d.fields = append(d.fields, f)
 

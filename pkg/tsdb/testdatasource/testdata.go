@@ -1,7 +1,6 @@
 package testdatasource
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -15,9 +14,7 @@ import (
 	"github.com/grafana/grafana/pkg/setting"
 )
 
-const pluginID = "testdata"
-
-func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, error) {
+func ProvideService(cfg *setting.Cfg, registrar plugins.CoreBackendRegistrar) (*Service, error) {
 	s := &Service{
 		queryMux:  datasource.NewQueryTypeMux(),
 		scenarios: map[string]*Scenario{},
@@ -26,11 +23,6 @@ func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, erro
 			data.NewField("Value", nil, make([]float64, 1)),
 			data.NewField("Min", nil, make([]float64, 1)),
 			data.NewField("Max", nil, make([]float64, 1)),
-		),
-		labelFrame: data.NewFrame("labeled",
-			data.NewField("labels", nil, make([]string, 1)),
-			data.NewField("Time", nil, make([]time.Time, 1)),
-			data.NewField("Value", nil, make([]float64, 1)),
 		),
 		logger: log.New("tsdb.testdata"),
 		cfg:    cfg,
@@ -46,8 +38,7 @@ func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, erro
 		CallResourceHandler: httpadapter.New(rMux),
 		StreamHandler:       s,
 	})
-	resolver := plugins.CoreDataSourcePathResolver(cfg, pluginID)
-	err := pluginStore.AddWithFactory(context.Background(), pluginID, factory, resolver)
+	err := registrar.LoadAndRegister("testdata", factory)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +47,9 @@ func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, erro
 }
 
 type Service struct {
-	cfg        *setting.Cfg
-	logger     log.Logger
-	scenarios  map[string]*Scenario
-	frame      *data.Frame
-	labelFrame *data.Frame
-	queryMux   *datasource.QueryTypeMux
+	cfg       *setting.Cfg
+	logger    log.Logger
+	scenarios map[string]*Scenario
+	frame     *data.Frame
+	queryMux  *datasource.QueryTypeMux
 }

@@ -1,8 +1,6 @@
 package api
 
 import (
-	"net/http"
-
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
@@ -31,11 +29,7 @@ func (hs *HTTPServer) getOrgQuotasHelper(c *models.ReqContext, orgID int64) resp
 	return response.JSON(200, query.Result)
 }
 
-func (hs *HTTPServer) UpdateOrgQuota(c *models.ReqContext) response.Response {
-	cmd := models.UpdateOrgQuotaCmd{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateOrgQuota(c *models.ReqContext, cmd models.UpdateOrgQuotaCmd) response.Response {
 	if !hs.Cfg.Quota.Enabled {
 		return response.Error(404, "Quotas not enabled", nil)
 	}
@@ -65,11 +59,7 @@ func GetUserQuotas(c *models.ReqContext) response.Response {
 	return response.JSON(200, query.Result)
 }
 
-func UpdateUserQuota(c *models.ReqContext) response.Response {
-	cmd := models.UpdateUserQuotaCmd{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateUserQuota(c *models.ReqContext, cmd models.UpdateUserQuotaCmd) response.Response {
 	if !setting.Quota.Enabled {
 		return response.Error(404, "Quotas not enabled", nil)
 	}

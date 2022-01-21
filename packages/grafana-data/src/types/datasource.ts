@@ -210,7 +210,7 @@ abstract class DataSourceApi<
   }
 
   /**
-   * @deprecated use DataSourceWithQueryImportSupport and DataSourceWithQueryExportSupport
+   * Imports queries from a different datasource
    */
   async importQueries?(queries: DataQuery[], originDataSource: DataSourceApi<DataQuery>): Promise<TQuery[]>;
 

@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"path"
 	"strings"
 
@@ -16,11 +15,7 @@ import (
 )
 
 // createShortURL handles requests to create short URLs.
-func (hs *HTTPServer) createShortURL(c *models.ReqContext) response.Response {
-	cmd := dtos.CreateShortURLCmd{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) createShortURL(c *models.ReqContext, cmd dtos.CreateShortURLCmd) response.Response {
 	hs.log.Debug("Received request to create short URL", "path", cmd.Path)
 
 	cmd.Path = strings.TrimSpace(cmd.Path)

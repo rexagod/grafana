@@ -23,9 +23,7 @@ import (
 
 var logger = log.New("tsdb.postgres")
 
-const pluginID = "postgres"
-
-func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, error) {
+func ProvideService(cfg *setting.Cfg, registrar plugins.CoreBackendRegistrar) (*Service, error) {
 	s := &Service{
 		tlsManager: newTLSManager(logger, cfg.DataPath),
 	}
@@ -34,8 +32,7 @@ func ProvideService(cfg *setting.Cfg, pluginStore plugins.Store) (*Service, erro
 		QueryDataHandler: s,
 	})
 
-	resolver := plugins.CoreDataSourcePathResolver(cfg, pluginID)
-	if err := pluginStore.AddWithFactory(context.Background(), pluginID, factory, resolver); err != nil {
+	if err := registrar.LoadAndRegister("postgres", factory); err != nil {
 		logger.Error("Failed to register plugin", "error", err)
 	}
 	return s, nil

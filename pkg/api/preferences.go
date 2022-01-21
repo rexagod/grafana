@@ -2,13 +2,11 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/web"
 )
 
 const (
@@ -18,11 +16,7 @@ const (
 )
 
 // POST /api/preferences/set-home-dash
-func SetHomeDashboard(c *models.ReqContext) response.Response {
-	cmd := models.SavePreferencesCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func SetHomeDashboard(c *models.ReqContext, cmd models.SavePreferencesCommand) response.Response {
 	cmd.UserId = c.UserId
 	cmd.OrgId = c.OrgId
 
@@ -56,11 +50,7 @@ func (hs *HTTPServer) getPreferencesFor(ctx context.Context, orgID, userID, team
 }
 
 // PUT /api/user/preferences
-func (hs *HTTPServer) UpdateUserPreferences(c *models.ReqContext) response.Response {
-	dtoCmd := dtos.UpdatePrefsCmd{}
-	if err := web.Bind(c.Req, &dtoCmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateUserPreferences(c *models.ReqContext, dtoCmd dtos.UpdatePrefsCmd) response.Response {
 	return hs.updatePreferencesFor(c.Req.Context(), c.OrgId, c.UserId, 0, &dtoCmd)
 }
 
@@ -91,10 +81,6 @@ func (hs *HTTPServer) GetOrgPreferences(c *models.ReqContext) response.Response 
 }
 
 // PUT /api/org/preferences
-func (hs *HTTPServer) UpdateOrgPreferences(c *models.ReqContext) response.Response {
-	dtoCmd := dtos.UpdatePrefsCmd{}
-	if err := web.Bind(c.Req, &dtoCmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateOrgPreferences(c *models.ReqContext, dtoCmd dtos.UpdatePrefsCmd) response.Response {
 	return hs.updatePreferencesFor(c.Req.Context(), c.OrgId, 0, 0, &dtoCmd)
 }

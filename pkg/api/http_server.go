@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/plugins/plugincontext"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
-	acmiddleware "github.com/grafana/grafana/pkg/services/accesscontrol/middleware"
 	"github.com/grafana/grafana/pkg/services/alerting"
 	"github.com/grafana/grafana/pkg/services/cleanup"
 	"github.com/grafana/grafana/pkg/services/contexthandler"
@@ -56,6 +55,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/updatechecker"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/tsdb/legacydata"
 	"github.com/grafana/grafana/pkg/util/errutil"
 	"github.com/grafana/grafana/pkg/web"
 	"github.com/prometheus/client_golang/prometheus"
@@ -98,6 +98,7 @@ type HTTPServer struct {
 	LivePushGateway           *pushhttp.Gateway
 	ContextHandler            *contexthandler.ContextHandler
 	SQLStore                  *sqlstore.SQLStore
+	legacyDataRequestHandler  legacydata.RequestHandler
 	AlertEngine               *alerting.AlertEngine
 	LoadSchemaService         *schemaloader.SchemaLoaderService
 	AlertNG                   *ngalert.AlertNG
@@ -111,7 +112,7 @@ type HTTPServer struct {
 	SecretsService            secrets.Service
 	DataSourcesService        *datasources.Service
 	cleanUpService            *cleanup.CleanUpService
-	tracingService            tracing.Tracer
+	tracingService            *tracing.TracingService
 	internalMetricsSvc        *metrics.InternalMetricsService
 	updateChecker             *updatechecker.Service
 	searchUsersService        searchusers.Service
@@ -124,7 +125,8 @@ type ServerOptions struct {
 
 func ProvideHTTPServer(opts ServerOptions, cfg *setting.Cfg, routeRegister routing.RouteRegister, bus bus.Bus,
 	renderService rendering.Service, licensing models.Licensing, hooksService *hooks.HooksService,
-	cacheService *localcache.CacheService, sqlStore *sqlstore.SQLStore, alertEngine *alerting.AlertEngine,
+	cacheService *localcache.CacheService, sqlStore *sqlstore.SQLStore,
+	legacyDataRequestHandler legacydata.RequestHandler, alertEngine *alerting.AlertEngine,
 	pluginRequestValidator models.PluginRequestValidator, pluginStaticRouteResolver plugins.StaticRouteResolver,
 	pluginDashboardManager plugins.PluginDashboardManager, pluginStore plugins.Store, pluginClient plugins.Client,
 	pluginErrorResolver plugins.ErrorResolver, settingsProvider setting.Provider,
@@ -137,7 +139,7 @@ func ProvideHTTPServer(opts ServerOptions, cfg *setting.Cfg, routeRegister routi
 	contextHandler *contexthandler.ContextHandler,
 	schemaService *schemaloader.SchemaLoaderService, alertNG *ngalert.AlertNG,
 	libraryPanelService librarypanels.Service, libraryElementService libraryelements.Service,
-	notificationService *notifications.NotificationService, tracingService tracing.Tracer,
+	notificationService *notifications.NotificationService, tracingService *tracing.TracingService,
 	internalMetricsSvc *metrics.InternalMetricsService, quotaService *quota.QuotaService,
 	socialService social.Service, oauthTokenService oauthtoken.OAuthTokenService,
 	encryptionService encryption.Internal, updateChecker *updatechecker.Service, searchUsersService searchusers.Service,
@@ -154,6 +156,7 @@ func ProvideHTTPServer(opts ServerOptions, cfg *setting.Cfg, routeRegister routi
 		HooksService:              hooksService,
 		CacheService:              cacheService,
 		SQLStore:                  sqlStore,
+		legacyDataRequestHandler:  legacyDataRequestHandler,
 		AlertEngine:               alertEngine,
 		PluginRequestValidator:    pluginRequestValidator,
 		pluginClient:              pluginClient,
@@ -441,7 +444,6 @@ func (hs *HTTPServer) addMiddlewaresAndStaticRoutes() {
 
 	m.Use(hs.ContextHandler.Middleware)
 	m.Use(middleware.OrgRedirect(hs.Cfg))
-	m.Use(acmiddleware.LoadPermissionsMiddleware(hs.AccessControl))
 
 	// needs to be after context handler
 	if hs.Cfg.EnforceDomain {

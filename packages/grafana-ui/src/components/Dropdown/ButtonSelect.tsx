@@ -1,4 +1,4 @@
-import React, { HTMLAttributes } from 'react';
+import React, { useState, HTMLAttributes } from 'react';
 import { PopoverContent } from '../Tooltip/Tooltip';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { ToolbarButtonVariant, ToolbarButton, ButtonGroup } from '../Button';
@@ -8,9 +8,6 @@ import { useStyles2 } from '../../themes/ThemeContext';
 import { Menu } from '../Menu/Menu';
 import { MenuItem } from '../Menu/MenuItem';
 import { FocusScope } from '@react-aria/focus';
-import { useMenuTriggerState } from '@react-stately/menu';
-import { useMenuTrigger } from '@react-aria/menu';
-import { useButton } from '@react-aria/button';
 
 export interface Props<T> extends HTMLAttributes<HTMLButtonElement> {
   className?: string;
@@ -28,36 +25,49 @@ export interface Props<T> extends HTMLAttributes<HTMLButtonElement> {
  */
 const ButtonSelectComponent = <T,>(props: Props<T>) => {
   const { className, options, value, onChange, narrow, variant, ...restProps } = props;
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const styles = useStyles2(getStyles);
-  const state = useMenuTriggerState({});
 
-  const ref = React.useRef(null);
-  const { menuTriggerProps, menuProps } = useMenuTrigger({}, state, ref);
-  const { buttonProps } = useButton(menuTriggerProps, ref);
+  const onCloseMenu = () => {
+    setIsOpen(false);
+  };
+
+  const onToggle = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+    setIsOpen(!isOpen);
+  };
+
+  const onArrowKeyDown = (event: React.KeyboardEvent) => {
+    event.stopPropagation();
+    if (event.key === 'ArrowDown' || event.key === 'Enter') {
+      setIsOpen(!isOpen);
+    }
+  };
 
   const onChangeInternal = (item: SelectableValue<T>) => {
     onChange(item);
-    state.close();
+    setIsOpen(false);
   };
 
   return (
     <ButtonGroup className={styles.wrapper}>
       <ToolbarButton
         className={className}
-        isOpen={state.isOpen}
+        isOpen={isOpen}
+        onClick={onToggle}
+        onKeyDown={onArrowKeyDown}
         narrow={narrow}
         variant={variant}
-        ref={ref}
-        {...buttonProps}
         {...restProps}
       >
         {value?.label || value?.value}
       </ToolbarButton>
-      {state.isOpen && (
+      {isOpen && (
         <div className={styles.menuWrapper}>
-          <ClickOutsideWrapper onClick={state.close} parent={document} includeButtonPress={false}>
+          <ClickOutsideWrapper onClick={onCloseMenu} parent={document} includeButtonPress={false}>
             <FocusScope contain autoFocus restoreFocus>
-              <Menu onClose={state.close} {...menuProps}>
+              <Menu onClose={onCloseMenu}>
                 {options.map((item) => (
                   <MenuItem
                     key={`${item.value}`}

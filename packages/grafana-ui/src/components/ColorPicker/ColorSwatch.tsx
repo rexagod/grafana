@@ -1,8 +1,6 @@
-import { useFocusRing } from '@react-aria/focus';
 import React, { CSSProperties } from 'react';
 import tinycolor from 'tinycolor2';
 import { useTheme2 } from '../../themes/ThemeContext';
-import { selectors } from '@grafana/e2e-selectors';
 
 /** @internal */
 export enum ColorSwatchVariant {
@@ -11,7 +9,7 @@ export enum ColorSwatchVariant {
 }
 
 /** @internal */
-export interface Props extends React.HTMLAttributes<HTMLDivElement> {
+export interface Props extends React.DOMAttributes<HTMLDivElement> {
   color: string;
   label?: string;
   variant?: ColorSwatchVariant;
@@ -20,10 +18,8 @@ export interface Props extends React.HTMLAttributes<HTMLDivElement> {
 
 /** @internal */
 export const ColorSwatch = React.forwardRef<HTMLDivElement, Props>(
-  ({ color, label, variant = ColorSwatchVariant.Small, isSelected, 'aria-label': ariaLabel, ...otherProps }, ref) => {
+  ({ color, label, variant = ColorSwatchVariant.Small, isSelected, ...otherProps }, ref) => {
     const theme = useTheme2();
-
-    const { isFocusVisible, focusProps } = useFocusRing();
     const tc = tinycolor(color);
     const isSmall = variant === ColorSwatchVariant.Small;
     const hasLabel = !!label;
@@ -32,14 +28,9 @@ export const ColorSwatch = React.forwardRef<HTMLDivElement, Props>(
     const swatchStyles: CSSProperties = {
       width: swatchSize,
       height: swatchSize,
-      border: 'none',
       borderRadius: '50%',
       background: `${color}`,
-      marginLeft: hasLabel ? '8px' : '0px',
-      marginRight: isSmall ? '0px' : '6px',
-      outline: isFocusVisible ? `2px solid  ${theme.colors.primary.main}` : 'none',
-      outlineOffset: '1px',
-      transition: 'none',
+      marginRight: hasLabel ? '8px' : '0px',
       boxShadow: isSelected
         ? `inset 0 0 0 2px ${color}, inset 0 0 0 4px ${theme.colors.getContrastText(color)}`
         : 'none',
@@ -49,8 +40,6 @@ export const ColorSwatch = React.forwardRef<HTMLDivElement, Props>(
       swatchStyles.border = `2px solid ${theme.colors.border.medium}`;
     }
 
-    const colorLabel = `${ariaLabel || label} color`;
-
     return (
       <div
         ref={ref}
@@ -59,11 +48,10 @@ export const ColorSwatch = React.forwardRef<HTMLDivElement, Props>(
           alignItems: 'center',
           cursor: 'pointer',
         }}
-        data-testid={selectors.components.ColorSwatch.name}
         {...otherProps}
       >
+        <div style={swatchStyles} />
         {hasLabel && <span>{label}</span>}
-        <button style={swatchStyles} {...focusProps} aria-label={colorLabel} />
       </div>
     );
   }

@@ -76,11 +76,7 @@ func createExternalDashboardSnapshot(cmd models.CreateDashboardSnapshotCommand) 
 }
 
 // POST /api/snapshots
-func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
-	cmd := models.CreateDashboardSnapshotCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func CreateDashboardSnapshot(c *models.ReqContext, cmd models.CreateDashboardSnapshotCommand) {
 	if cmd.Name == "" {
 		cmd.Name = "Unnamed snapshot"
 	}
@@ -93,13 +89,13 @@ func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
 	if cmd.External {
 		if !setting.ExternalEnabled {
 			c.JsonApiErr(403, "External dashboard creation is disabled", nil)
-			return nil
+			return
 		}
 
 		response, err := createExternalDashboardSnapshot(cmd)
 		if err != nil {
 			c.JsonApiErr(500, "Failed to create external snapshot", err)
-			return nil
+			return
 		}
 
 		url = response.Url
@@ -116,7 +112,7 @@ func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
 			cmd.Key, err = util.GetRandomString(32)
 			if err != nil {
 				c.JsonApiErr(500, "Could not generate random string", err)
-				return nil
+				return
 			}
 		}
 
@@ -125,7 +121,7 @@ func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
 			cmd.DeleteKey, err = util.GetRandomString(32)
 			if err != nil {
 				c.JsonApiErr(500, "Could not generate random string", err)
-				return nil
+				return
 			}
 		}
 
@@ -134,9 +130,9 @@ func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
 		metrics.MApiDashboardSnapshotCreate.Inc()
 	}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		c.JsonApiErr(500, "Failed to create snapshot", err)
-		return nil
+		return
 	}
 
 	c.JSON(200, util.DynMap{
@@ -146,7 +142,6 @@ func CreateDashboardSnapshot(c *models.ReqContext) response.Response {
 		"deleteUrl": setting.ToAbsUrl("api/snapshots-delete/" + cmd.DeleteKey),
 		"id":        cmd.Result.Id,
 	})
-	return nil
 }
 
 // GET /api/snapshots/:key
@@ -158,7 +153,7 @@ func GetDashboardSnapshot(c *models.ReqContext) response.Response {
 
 	query := &models.GetDashboardSnapshotQuery{Key: key}
 
-	err := bus.DispatchCtx(c.Req.Context(), query)
+	err := bus.Dispatch(query)
 	if err != nil {
 		return response.Error(500, "Failed to get dashboard snapshot", err)
 	}
@@ -226,7 +221,7 @@ func DeleteDashboardSnapshotByDeleteKey(c *models.ReqContext) response.Response 
 
 	query := &models.GetDashboardSnapshotQuery{DeleteKey: key}
 
-	err := bus.DispatchCtx(c.Req.Context(), query)
+	err := bus.Dispatch(query)
 	if err != nil {
 		return response.Error(500, "Failed to get dashboard snapshot", err)
 	}
@@ -240,7 +235,7 @@ func DeleteDashboardSnapshotByDeleteKey(c *models.ReqContext) response.Response 
 
 	cmd := &models.DeleteDashboardSnapshotCommand{DeleteKey: query.Result.DeleteKey}
 
-	if err := bus.DispatchCtx(c.Req.Context(), cmd); err != nil {
+	if err := bus.Dispatch(cmd); err != nil {
 		return response.Error(500, "Failed to delete dashboard snapshot", err)
 	}
 
@@ -259,7 +254,7 @@ func DeleteDashboardSnapshot(c *models.ReqContext) response.Response {
 
 	query := &models.GetDashboardSnapshotQuery{Key: key}
 
-	err := bus.DispatchCtx(c.Req.Context(), query)
+	err := bus.Dispatch(query)
 	if err != nil {
 		return response.Error(500, "Failed to get dashboard snapshot", err)
 	}
@@ -288,7 +283,7 @@ func DeleteDashboardSnapshot(c *models.ReqContext) response.Response {
 
 	cmd := &models.DeleteDashboardSnapshotCommand{DeleteKey: query.Result.DeleteKey}
 
-	if err := bus.DispatchCtx(c.Req.Context(), cmd); err != nil {
+	if err := bus.Dispatch(cmd); err != nil {
 		return response.Error(500, "Failed to delete dashboard snapshot", err)
 	}
 
@@ -314,7 +309,7 @@ func SearchDashboardSnapshots(c *models.ReqContext) response.Response {
 		SignedInUser: c.SignedInUser,
 	}
 
-	err := bus.DispatchCtx(c.Req.Context(), &searchQuery)
+	err := bus.Dispatch(&searchQuery)
 	if err != nil {
 		return response.Error(500, "Search failed", err)
 	}

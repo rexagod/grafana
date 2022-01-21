@@ -84,6 +84,7 @@ func (uss *UsageStats) GetUsageReport(ctx context.Context) (usagestats.Report, e
 	metrics["stats.dashboards_viewers_can_admin.count"] = statsQuery.Result.DashboardsViewersCanAdmin
 	metrics["stats.folders_viewers_can_edit.count"] = statsQuery.Result.FoldersViewersCanEdit
 	metrics["stats.folders_viewers_can_admin.count"] = statsQuery.Result.FoldersViewersCanAdmin
+	metrics["stats.api_keys.count"] = statsQuery.Result.APIKeys
 
 	ossEditionCount := 1
 	enterpriseEditionCount := 0
@@ -122,7 +123,7 @@ func (uss *UsageStats) GetUsageReport(ctx context.Context) (usagestats.Report, e
 	// as sending that name could be sensitive information
 	dsOtherCount := 0
 	for _, dsStat := range dsStats.Result {
-		if uss.ShouldBeReported(ctx, dsStat.Type) {
+		if uss.ShouldBeReported(dsStat.Type) {
 			metrics["stats.ds."+dsStat.Type+".count"] = dsStat.Count
 		} else {
 			dsOtherCount += dsStat.Count
@@ -131,7 +132,7 @@ func (uss *UsageStats) GetUsageReport(ctx context.Context) (usagestats.Report, e
 	metrics["stats.ds.other.count"] = dsOtherCount
 
 	esDataSourcesQuery := models.GetDataSourcesByTypeQuery{Type: models.DS_ES}
-	if err := uss.Bus.DispatchCtx(ctx, &esDataSourcesQuery); err != nil {
+	if err := uss.Bus.Dispatch(&esDataSourcesQuery); err != nil {
 		uss.log.Error("Failed to get elasticsearch json data", "error", err)
 		return report, err
 	}
@@ -170,7 +171,7 @@ func (uss *UsageStats) GetUsageReport(ctx context.Context) (usagestats.Report, e
 
 		access := strings.ToLower(dsAccessStat.Access)
 
-		if uss.ShouldBeReported(ctx, dsAccessStat.Type) {
+		if uss.ShouldBeReported(dsAccessStat.Type) {
 			metrics["stats.ds_access."+dsAccessStat.Type+"."+access+".count"] = dsAccessStat.Count
 		} else {
 			old := dsAccessOtherCount[access]
@@ -329,8 +330,8 @@ func (uss *UsageStats) updateTotalStats(ctx context.Context) {
 	}
 }
 
-func (uss *UsageStats) ShouldBeReported(ctx context.Context, dsType string) bool {
-	ds, exists := uss.pluginStore.Plugin(ctx, dsType)
+func (uss *UsageStats) ShouldBeReported(dsType string) bool {
+	ds, exists := uss.pluginStore.Plugin(context.TODO(), dsType)
 	if !exists {
 		return false
 	}

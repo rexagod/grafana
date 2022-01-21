@@ -103,7 +103,7 @@ func (fr *FileReader) walkDisk(ctx context.Context) error {
 		return err
 	}
 
-	fr.handleMissingDashboardFiles(ctx, provisionedDashboardRefs, filesFoundOnDisk)
+	fr.handleMissingDashboardFiles(provisionedDashboardRefs, filesFoundOnDisk)
 
 	usageTracker := newUsageTracker()
 	if fr.FoldersFromFilesStructure {
@@ -184,7 +184,7 @@ func (fr *FileReader) storeDashboardsInFoldersFromFileStructure(ctx context.Cont
 }
 
 // handleMissingDashboardFiles will unprovision or delete dashboards which are missing on disk.
-func (fr *FileReader) handleMissingDashboardFiles(ctx context.Context, provisionedDashboardRefs map[string]*models.DashboardProvisioning,
+func (fr *FileReader) handleMissingDashboardFiles(provisionedDashboardRefs map[string]*models.DashboardProvisioning,
 	filesFoundOnDisk map[string]os.FileInfo) {
 	// find dashboards to delete since json file is missing
 	var dashboardsToDelete []int64
@@ -200,7 +200,7 @@ func (fr *FileReader) handleMissingDashboardFiles(ctx context.Context, provision
 		// so afterwards the dashboard is considered unprovisioned.
 		for _, dashboardID := range dashboardsToDelete {
 			fr.log.Debug("unprovisioning provisioned dashboard. missing on disk", "id", dashboardID)
-			err := fr.dashboardProvisioningService.UnprovisionDashboard(ctx, dashboardID)
+			err := fr.dashboardProvisioningService.UnprovisionDashboard(dashboardID)
 			if err != nil {
 				fr.log.Error("failed to unprovision dashboard", "dashboard_id", dashboardID, "error", err)
 			}
@@ -209,7 +209,7 @@ func (fr *FileReader) handleMissingDashboardFiles(ctx context.Context, provision
 		// delete dashboards missing JSON file
 		for _, dashboardID := range dashboardsToDelete {
 			fr.log.Debug("deleting provisioned dashboard, missing on disk", "id", dashboardID)
-			err := fr.dashboardProvisioningService.DeleteProvisionedDashboard(ctx, dashboardID, fr.Cfg.OrgID)
+			err := fr.dashboardProvisioningService.DeleteProvisionedDashboard(dashboardID, fr.Cfg.OrgID)
 			if err != nil {
 				fr.log.Error("failed to delete dashboard", "id", dashboardID, "error", err)
 			}

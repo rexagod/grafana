@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -79,11 +78,7 @@ func getOrgHelper(ctx context.Context, orgID int64) response.Response {
 }
 
 // POST /api/orgs
-func (hs *HTTPServer) CreateOrg(c *models.ReqContext) response.Response {
-	cmd := models.CreateOrgCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) CreateOrg(c *models.ReqContext, cmd models.CreateOrgCommand) response.Response {
 	acEnabled := hs.Cfg.FeatureToggles["accesscontrol"]
 	if !acEnabled && !(setting.AllowUserOrgCreate || c.IsGrafanaAdmin) {
 		return response.Error(403, "Access denied", nil)
@@ -106,20 +101,12 @@ func (hs *HTTPServer) CreateOrg(c *models.ReqContext) response.Response {
 }
 
 // PUT /api/org
-func UpdateCurrentOrg(c *models.ReqContext) response.Response {
-	form := dtos.UpdateOrgForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateCurrentOrg(c *models.ReqContext, form dtos.UpdateOrgForm) response.Response {
 	return updateOrgHelper(c.Req.Context(), form, c.OrgId)
 }
 
 // PUT /api/orgs/:orgId
-func UpdateOrg(c *models.ReqContext) response.Response {
-	form := dtos.UpdateOrgForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateOrg(c *models.ReqContext, form dtos.UpdateOrgForm) response.Response {
 	return updateOrgHelper(c.Req.Context(), form, c.ParamsInt64(":orgId"))
 }
 
@@ -136,20 +123,12 @@ func updateOrgHelper(ctx context.Context, form dtos.UpdateOrgForm, orgID int64) 
 }
 
 // PUT /api/org/address
-func UpdateCurrentOrgAddress(c *models.ReqContext) response.Response {
-	form := dtos.UpdateOrgAddressForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateCurrentOrgAddress(c *models.ReqContext, form dtos.UpdateOrgAddressForm) response.Response {
 	return updateOrgAddressHelper(c.Req.Context(), form, c.OrgId)
 }
 
 // PUT /api/orgs/:orgId/address
-func UpdateOrgAddress(c *models.ReqContext) response.Response {
-	form := dtos.UpdateOrgAddressForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateOrgAddress(c *models.ReqContext, form dtos.UpdateOrgAddressForm) response.Response {
 	return updateOrgAddressHelper(c.Req.Context(), form, c.ParamsInt64(":orgId"))
 }
 

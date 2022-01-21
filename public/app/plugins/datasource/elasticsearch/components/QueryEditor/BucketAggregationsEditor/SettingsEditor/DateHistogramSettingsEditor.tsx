@@ -1,5 +1,4 @@
 import React, { useRef } from 'react';
-import { GroupBase, OptionsOrGroups } from 'react-select';
 import { InlineField, Input, Select, TimeZonePicker } from '@grafana/ui';
 import { DateHistogram } from '../aggregations';
 import { bucketAggregationConfig } from '../utils';
@@ -26,11 +25,11 @@ const hasValue = (searchValue: string) => ({ value }: SelectableValue<string>) =
 const isValidNewOption = (
   inputValue: string,
   _: SelectableValue<string> | null,
-  options: OptionsOrGroups<unknown, GroupBase<unknown>>
+  options: Readonly<Array<SelectableValue<string>>>
 ) => {
   // TODO: would be extremely nice here to allow only template variables and values that are
   // valid date histogram's Interval options
-  const valueExists = (options as Array<SelectableValue<string>>).some(hasValue(inputValue));
+  const valueExists = options.some(hasValue(inputValue));
   // we also don't want users to create "empty" values
   return !valueExists && inputValue.trim().length > 0;
 };

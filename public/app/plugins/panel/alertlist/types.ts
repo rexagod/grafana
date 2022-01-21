@@ -1,4 +1,4 @@
-import { GrafanaAlertState, PromAlertingRuleState } from 'app/types/unified-alerting-dto';
+import { PromAlertingRuleState } from 'app/types/unified-alerting-dto';
 
 export enum SortOrder {
   AlphaAsc = 1,
@@ -41,9 +41,5 @@ export interface UnifiedAlertListOptions {
   folder: { id: number; title: string };
   stateFilter: {
     [K in PromAlertingRuleState]: boolean;
-  };
-  alertInstanceLabelFilter: string;
-  alertInstanceStateFilter: {
-    [K in GrafanaAlertState]: boolean;
   };
 }

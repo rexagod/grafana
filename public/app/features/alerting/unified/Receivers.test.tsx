@@ -113,7 +113,7 @@ const ui = {
 };
 
 const clickSelectOption = async (selectElement: HTMLElement, optionText: string): Promise<void> => {
-  userEvent.click(byRole('combobox').get(selectElement));
+  userEvent.click(byRole('textbox').get(selectElement));
   await selectOptionInTest(selectElement, optionText);
 };
 

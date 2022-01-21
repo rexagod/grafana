@@ -314,7 +314,4 @@ export const Components = {
   VisualizationPreview: {
     card: (name: string) => `data-testid suggestion-${name}`,
   },
-  ColorSwatch: {
-    name: `data-testid-colorswatch`,
-  },
 };

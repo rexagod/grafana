@@ -27,10 +27,12 @@ describe('timeSrv', () => {
     timeSrv = new TimeSrv(new ContextSrvStub() as any);
     timeSrv.init(_dashboard);
 
-    locationUpdates = [];
-    const history = new HistoryWrapper();
-    history.getHistory().listen((x) => locationUpdates.push(x));
-    setLocationService(history);
+    beforeEach(() => {
+      locationUpdates = [];
+      const history = new HistoryWrapper();
+      history.getHistory().listen((x) => locationUpdates.push(x));
+      setLocationService(history);
+    });
   });
 
   describe('timeRange', () => {

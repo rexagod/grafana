@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -10,14 +9,9 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
-	"github.com/grafana/grafana/pkg/web"
 )
 
-func SendResetPasswordEmail(c *models.ReqContext) response.Response {
-	form := dtos.SendResetPasswordEmailForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func SendResetPasswordEmail(c *models.ReqContext, form dtos.SendResetPasswordEmailForm) response.Response {
 	if setting.LDAPEnabled || setting.AuthProxyEnabled {
 		return response.Error(401, "Not allowed to reset password when LDAP or Auth Proxy is enabled", nil)
 	}
@@ -33,21 +27,17 @@ func SendResetPasswordEmail(c *models.ReqContext) response.Response {
 	}
 
 	emailCmd := models.SendResetPasswordEmailCommand{User: userQuery.Result}
-	if err := bus.DispatchCtx(c.Req.Context(), &emailCmd); err != nil {
+	if err := bus.Dispatch(&emailCmd); err != nil {
 		return response.Error(500, "Failed to send email", err)
 	}
 
 	return response.Success("Email sent")
 }
 
-func ResetPassword(c *models.ReqContext) response.Response {
-	form := dtos.ResetUserPasswordForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func ResetPassword(c *models.ReqContext, form dtos.ResetUserPasswordForm) response.Response {
 	query := models.ValidateResetPasswordCodeQuery{Code: form.Code}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
+	if err := bus.Dispatch(&query); err != nil {
 		if errors.Is(err, models.ErrInvalidEmailCode) {
 			return response.Error(400, "Invalid or expired reset password code", nil)
 		}
@@ -66,7 +56,7 @@ func ResetPassword(c *models.ReqContext) response.Response {
 		return response.Error(500, "Failed to encode password", err)
 	}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
+	if err := bus.Dispatch(&cmd); err != nil {
 		return response.Error(500, "Failed to change user password", err)
 	}
 

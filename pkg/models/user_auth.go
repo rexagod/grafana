@@ -19,7 +19,6 @@ type UserAuth struct {
 	Created           time.Time
 	OAuthAccessToken  string
 	OAuthRefreshToken string
-	OAuthIdToken      string
 	OAuthTokenType    string
 	OAuthExpiry       time.Time
 }

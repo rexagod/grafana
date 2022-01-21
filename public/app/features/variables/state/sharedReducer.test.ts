@@ -176,13 +176,12 @@ describe('sharedReducer', () => {
 
   describe('when duplicateVariable is dispatched', () => {
     it('then state should be correct', () => {
-      const initialState: VariablesState = getVariableState(3, -1, false, true);
+      const initialState: VariablesState = getVariableState(3);
       const payload = toVariablePayload({ id: '1', type: 'query' }, { newId: '11' });
       reducerTester<VariablesState>()
         .givenReducer(sharedReducer, initialState)
         .whenActionIsDispatched(duplicateVariable(payload))
         .thenStateShouldEqual({
-          ...initialState,
           '0': {
             id: '0',
             type: 'query',
@@ -236,7 +235,7 @@ describe('sharedReducer', () => {
   describe('when changeVariableOrder is dispatched', () => {
     it('then state should be correct', () => {
       const initialState: VariablesState = getVariableState(3);
-      const payload = toVariablePayload({ id: '2', type: 'query' }, { fromIndex: 2, toIndex: 0 });
+      const payload = toVariablePayload({ id: '1', type: 'query' }, { fromIndex: 1, toIndex: 0 });
       reducerTester<VariablesState>()
         .givenReducer(sharedReducer, initialState)
         .whenActionIsDispatched(changeVariableOrder(payload))
@@ -247,55 +246,6 @@ describe('sharedReducer', () => {
             name: 'Name-0',
             hide: VariableHide.dontHide,
             index: 1,
-            label: 'Label-0',
-            skipUrlSync: false,
-            global: false,
-            state: LoadingState.NotStarted,
-            error: null,
-            description: null,
-          },
-          '1': {
-            id: '1',
-            type: 'query',
-            name: 'Name-1',
-            hide: VariableHide.dontHide,
-            index: 2,
-            label: 'Label-1',
-            skipUrlSync: false,
-            global: false,
-            state: LoadingState.NotStarted,
-            error: null,
-            description: null,
-          },
-          '2': {
-            id: '2',
-            type: 'query',
-            name: 'Name-2',
-            hide: VariableHide.dontHide,
-            index: 0,
-            label: 'Label-2',
-            skipUrlSync: false,
-            global: false,
-            state: LoadingState.NotStarted,
-            error: null,
-            description: null,
-          },
-        });
-    });
-
-    it('then state should be correct', () => {
-      const initialState: VariablesState = getVariableState(3);
-      const payload = toVariablePayload({ id: '0', type: 'query' }, { fromIndex: 0, toIndex: 2 });
-      reducerTester<VariablesState>()
-        .givenReducer(sharedReducer, initialState)
-        .whenActionIsDispatched(changeVariableOrder(payload))
-        .thenStateShouldEqual({
-          '0': {
-            id: '0',
-            type: 'query',
-            name: 'Name-0',
-            hide: VariableHide.dontHide,
-            index: 2,
             label: 'Label-0',
             skipUrlSync: false,
             global: false,
@@ -321,7 +271,7 @@ describe('sharedReducer', () => {
             type: 'query',
             name: 'Name-2',
             hide: VariableHide.dontHide,
-            index: 1,
+            index: 2,
             label: 'Label-2',
             skipUrlSync: false,
             global: false,

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -25,7 +24,7 @@ var datasourcesLogger = log.New("datasources")
 func (hs *HTTPServer) GetDataSources(c *models.ReqContext) response.Response {
 	query := models.GetDataSourcesQuery{OrgId: c.OrgId, DataSourceLimit: hs.Cfg.DataSourceLimit}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
+	if err := bus.Dispatch(&query); err != nil {
 		return response.Error(500, "Failed to query datasources", err)
 	}
 
@@ -212,11 +211,7 @@ func validateURL(tp string, u string) response.Response {
 	return nil
 }
 
-func AddDataSource(c *models.ReqContext) response.Response {
-	cmd := models.AddDataSourceCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func AddDataSource(c *models.ReqContext, cmd models.AddDataSourceCommand) response.Response {
 	datasourcesLogger.Debug("Received command to add data source", "url", cmd.Url)
 	cmd.OrgId = c.OrgId
 	if resp := validateURL(cmd.Type, cmd.Url); resp != nil {
@@ -240,11 +235,7 @@ func AddDataSource(c *models.ReqContext) response.Response {
 	})
 }
 
-func (hs *HTTPServer) UpdateDataSource(c *models.ReqContext) response.Response {
-	cmd := models.UpdateDataSourceCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateDataSource(c *models.ReqContext, cmd models.UpdateDataSourceCommand) response.Response {
 	datasourcesLogger.Debug("Received command to update data source", "url", cmd.Url)
 	cmd.OrgId = c.OrgId
 	cmd.Id = c.ParamsInt64(":id")
@@ -395,7 +386,18 @@ func (hs *HTTPServer) CallDatasourceResource(c *models.ReqContext) {
 		return
 	}
 
-	hs.callPluginResource(c, plugin.ID, ds.Uid)
+	dsInstanceSettings, err := adapters.ModelToInstanceSettings(ds, hs.decryptSecureJsonDataFn())
+	if err != nil {
+		c.JsonApiErr(500, "Unable to process datasource instance model", err)
+	}
+
+	pCtx := backend.PluginContext{
+		User:                       adapters.BackendUserFromSignedInUser(c.SignedInUser),
+		OrgID:                      c.OrgId,
+		PluginID:                   plugin.ID,
+		DataSourceInstanceSettings: dsInstanceSettings,
+	}
+	hs.pluginClient.CallResource(pCtx, c, web.Params(c.Req)["*"])
 }
 
 func convertModelToDtos(ds *models.DataSource) dtos.DataSource {

@@ -13,10 +13,7 @@ import { GrafanaEdition } from '@grafana/data/src/types/config';
 jest.mock('@sentry/browser');
 
 describe('SentryEchoBackend', () => {
-  beforeEach(() => {
-    jest.resetAllMocks();
-    window.fetch = jest.fn();
-  });
+  beforeEach(() => jest.resetAllMocks());
 
   const buildInfo: BuildInfo = {
     version: '1.0',

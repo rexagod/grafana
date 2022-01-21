@@ -1,7 +1,6 @@
 package notifications
 
 import (
-	"context"
 	"io/ioutil"
 	"testing"
 
@@ -57,7 +56,7 @@ func TestEmailIntegrationTest(t *testing.T) {
 				Template: "alert_notification",
 			}
 
-			err := ns.sendEmailCommandHandler(context.Background(), cmd)
+			err := ns.sendEmailCommandHandler(cmd)
 			require.NoError(t, err)
 
 			sentMsg := <-ns.mailQueue

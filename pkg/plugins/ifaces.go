@@ -18,14 +18,10 @@ type Store interface {
 	Plugins(ctx context.Context, pluginTypes ...Type) []PluginDTO
 
 	// Add adds a plugin to the store.
-	Add(ctx context.Context, pluginID, version string) error
-	// AddWithFactory adds a plugin to the store.
-	AddWithFactory(ctx context.Context, pluginID string, factory backendplugin.PluginFactoryFunc, resolver PluginPathResolver) error
+	Add(ctx context.Context, pluginID, version string, opts AddOpts) error
 	// Remove removes a plugin from the store.
 	Remove(ctx context.Context, pluginID string) error
 }
-
-type PluginPathResolver func() (string, error)
 
 type AddOpts struct {
 	PluginInstallDir, PluginZipURL, PluginRepoURL string
@@ -59,8 +55,9 @@ type Client interface {
 	backend.QueryDataHandler
 	backend.CheckHealthHandler
 	backend.StreamHandler
-	backend.CallResourceHandler
 
+	// CallResource calls a plugin resource.
+	CallResource(pCtx backend.PluginContext, ctx *models.ReqContext, path string)
 	// CollectMetrics collects metrics from a plugin.
 	CollectMetrics(ctx context.Context, pluginID string) (*backend.CollectMetricsResult, error)
 }
@@ -68,6 +65,11 @@ type Client interface {
 type RendererManager interface {
 	// Renderer returns a renderer plugin.
 	Renderer() *Plugin
+}
+
+type CoreBackendRegistrar interface {
+	// LoadAndRegister loads and registers a Core backend plugin
+	LoadAndRegister(pluginID string, factory backendplugin.PluginFactoryFunc) error
 }
 
 type StaticRouteResolver interface {
@@ -85,9 +87,9 @@ type PluginLoaderAuthorizer interface {
 
 type PluginDashboardManager interface {
 	// GetPluginDashboards gets dashboards for a certain org/plugin.
-	GetPluginDashboards(ctx context.Context, orgID int64, pluginID string) ([]*PluginDashboardInfoDTO, error)
+	GetPluginDashboards(orgID int64, pluginID string) ([]*PluginDashboardInfoDTO, error)
 	// LoadPluginDashboard loads a plugin dashboard.
-	LoadPluginDashboard(ctx context.Context, pluginID, path string) (*models.Dashboard, error)
+	LoadPluginDashboard(pluginID, path string) (*models.Dashboard, error)
 	// ImportDashboard imports a dashboard.
 	ImportDashboard(ctx context.Context, pluginID, path string, orgID, folderID int64, dashboardModel *simplejson.Json,
 		overwrite bool, inputs []ImportDashboardInput, user *models.SignedInUser) (PluginDashboardInfoDTO,

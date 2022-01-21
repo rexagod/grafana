@@ -15,8 +15,7 @@ import NoOptionsMessage from './NoOptionsMessage';
 import resetSelectStyles from '../../../Select/resetSelectStyles';
 import { CustomScrollbar } from '../../../CustomScrollbar/CustomScrollbar';
 import { PopoverContent, Tooltip } from '../../../Tooltip/Tooltip';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
-import { ThemeContext } from '../../../../themes';
+import { SelectableValue } from '@grafana/data';
 
 /**
  * Changes in new selects:
@@ -50,8 +49,6 @@ export const MenuList = (props: any) => {
   );
 };
 export class Select<T> extends PureComponent<LegacySelectProps<T>> {
-  static contextType = ThemeContext;
-
   static defaultProps: Partial<LegacySelectProps<any>> = {
     className: '',
     isDisabled: false,
@@ -140,7 +137,7 @@ export class Select<T> extends PureComponent<LegacySelectProps<T>> {
               onChange={onChange}
               options={options}
               placeholder={placeholder || 'Choose'}
-              styles={resetSelectStyles(this.context as GrafanaTheme2)}
+              styles={resetSelectStyles()}
               isDisabled={isDisabled}
               isLoading={isLoading}
               isClearable={isClearable}
@@ -221,6 +218,7 @@ export class AsyncSelect<T> extends PureComponent<AsyncProps<T>> {
       <WrapInTooltip onCloseMenu={onCloseMenu} onOpenMenu={onOpenMenu} tooltipContent={tooltipContent} isOpen={isOpen}>
         {(onOpenMenuInternal, onCloseMenuInternal) => {
           return (
+            //@ts-expect-error
             <ReactAsyncSelect
               captureMenuScroll={false}
               classNamePrefix="gf-form-select-box"
@@ -233,17 +231,14 @@ export class AsyncSelect<T> extends PureComponent<AsyncProps<T>> {
               }}
               defaultValue={defaultValue}
               value={value}
-              //@ts-expect-error
               getOptionLabel={getOptionLabel}
               getOptionValue={getOptionValue}
               menuShouldScrollIntoView={false}
-              //@ts-expect-error
               onChange={onChange}
               loadOptions={loadOptions}
               isLoading={isLoading}
               defaultOptions={defaultOptions}
               placeholder={placeholder || 'Choose'}
-              //@ts-expect-error
               styles={resetSelectStyles()}
               loadingMessage={() => loadingMessage}
               noOptionsMessage={noOptionsMessage}

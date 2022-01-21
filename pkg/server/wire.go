@@ -102,6 +102,7 @@ var wireBasicSet = wire.NewSet(
 	manager.ProvideService,
 	wire.Bind(new(plugins.Client), new(*manager.PluginManager)),
 	wire.Bind(new(plugins.Store), new(*manager.PluginManager)),
+	wire.Bind(new(plugins.CoreBackendRegistrar), new(*manager.PluginManager)),
 	wire.Bind(new(plugins.StaticRouteResolver), new(*manager.PluginManager)),
 	wire.Bind(new(plugins.PluginDashboardManager), new(*manager.PluginManager)),
 	wire.Bind(new(plugins.RendererManager), new(*manager.PluginManager)),

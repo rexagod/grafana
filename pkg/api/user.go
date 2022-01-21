@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -11,7 +10,6 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
-	"github.com/grafana/grafana/pkg/web"
 )
 
 // GET /api/user  (current authenticated user)
@@ -72,11 +70,7 @@ func GetUserByLoginOrEmail(c *models.ReqContext) response.Response {
 }
 
 // POST /api/user
-func UpdateSignedInUser(c *models.ReqContext) response.Response {
-	cmd := models.UpdateUserCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateSignedInUser(c *models.ReqContext, cmd models.UpdateUserCommand) response.Response {
 	if setting.AuthProxyEnabled {
 		if setting.AuthProxyHeaderProperty == "email" && cmd.Email != c.Email {
 			return response.Error(400, "Not allowed to change email when auth proxy is using email property", nil)
@@ -90,11 +84,7 @@ func UpdateSignedInUser(c *models.ReqContext) response.Response {
 }
 
 // POST /api/users/:id
-func UpdateUser(c *models.ReqContext) response.Response {
-	cmd := models.UpdateUserCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func UpdateUser(c *models.ReqContext, cmd models.UpdateUserCommand) response.Response {
 	cmd.UserId = c.ParamsInt64(":id")
 	return handleUpdateUser(c.Req.Context(), cmd)
 }
@@ -227,11 +217,7 @@ func (hs *HTTPServer) ChangeActiveOrgAndRedirectToHome(c *models.ReqContext) {
 	c.Redirect(hs.Cfg.AppSubURL + "/")
 }
 
-func ChangeUserPassword(c *models.ReqContext) response.Response {
-	cmd := models.ChangeUserPasswordCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func ChangeUserPassword(c *models.ReqContext, cmd models.ChangeUserPasswordCommand) response.Response {
 	if setting.LDAPEnabled || setting.AuthProxyEnabled {
 		return response.Error(400, "Not allowed to change password when LDAP or Auth Proxy is enabled", nil)
 	}

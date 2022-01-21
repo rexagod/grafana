@@ -6,18 +6,17 @@ import { BackendSrvRequest, getBackendSrv, getDataSourceSrv } from '@grafana/run
 import {
   DataFrame,
   DataLink,
+  DataQuery,
   DataQueryRequest,
   DataQueryResponse,
   DataSourceApi,
   DataSourceInstanceSettings,
   DataSourceWithLogsContextSupport,
-  DataSourceWithQueryImportSupport,
   DataSourceWithLogsVolumeSupport,
   DateTime,
   dateTime,
   Field,
   getDefaultTimeRange,
-  AbstractQuery,
   getLogLevelFromKey,
   LogLevel,
   LogRowModel,
@@ -64,10 +63,7 @@ const ELASTIC_META_FIELDS = [
 
 export class ElasticDatasource
   extends DataSourceApi<ElasticsearchQuery, ElasticsearchOptions>
-  implements
-    DataSourceWithLogsContextSupport,
-    DataSourceWithQueryImportSupport<ElasticsearchQuery>,
-    DataSourceWithLogsVolumeSupport<ElasticsearchQuery> {
+  implements DataSourceWithLogsContextSupport, DataSourceWithLogsVolumeSupport<ElasticsearchQuery> {
   basicAuth?: string;
   withCredentials?: boolean;
   url: string;
@@ -167,8 +163,8 @@ export class ElasticDatasource
       );
   }
 
-  async importFromAbstractQueries(abstractQueries: AbstractQuery[]): Promise<ElasticsearchQuery[]> {
-    return abstractQueries.map((abstractQuery) => this.languageProvider.importFromAbstractQuery(abstractQuery));
+  async importQueries(queries: DataQuery[], originDataSource: DataSourceApi): Promise<ElasticsearchQuery[]> {
+    return this.languageProvider.importQueries(queries, originDataSource.meta.id);
   }
 
   /**
@@ -936,8 +932,6 @@ export class ElasticDatasource
  * Exported for tests.
  */
 export function enhanceDataFrame(dataFrame: DataFrame, dataLinks: DataLinkConfig[], limit?: number) {
-  const dataSourceSrv = getDataSourceSrv();
-
   if (limit) {
     dataFrame.meta = {
       ...dataFrame.meta,
@@ -950,35 +944,37 @@ export function enhanceDataFrame(dataFrame: DataFrame, dataLinks: DataLinkConfig
   }
 
   for (const field of dataFrame.fields) {
-    const dataLinkConfig = dataLinks.find((dataLink) => field.name && field.name.match(dataLink.field));
+    const linksToApply = dataLinks.filter((dataLink) => new RegExp(dataLink.field).test(field.name));
 
-    if (!dataLinkConfig) {
+    if (linksToApply.length === 0) {
       continue;
     }
 
-    let link: DataLink;
-
-    if (dataLinkConfig.datasourceUid) {
-      const dsSettings = dataSourceSrv.getInstanceSettings(dataLinkConfig.datasourceUid);
-
-      link = {
-        title: dataLinkConfig.urlDisplayLabel || '',
-        url: '',
-        internal: {
-          query: { query: dataLinkConfig.url },
-          datasourceUid: dataLinkConfig.datasourceUid,
-          datasourceName: dsSettings?.name ?? 'Data source not found',
-        },
-      };
-    } else {
-      link = {
-        title: dataLinkConfig.urlDisplayLabel || '',
-        url: dataLinkConfig.url,
-      };
-    }
-
     field.config = field.config || {};
-    field.config.links = [...(field.config.links || []), link];
+    field.config.links = [...(field.config.links || [], linksToApply.map(generateDataLink))];
+  }
+}
+
+function generateDataLink(linkConfig: DataLinkConfig): DataLink {
+  const dataSourceSrv = getDataSourceSrv();
+
+  if (linkConfig.datasourceUid) {
+    const dsSettings = dataSourceSrv.getInstanceSettings(linkConfig.datasourceUid);
+
+    return {
+      title: linkConfig.urlDisplayLabel || '',
+      url: '',
+      internal: {
+        query: { query: linkConfig.url },
+        datasourceUid: linkConfig.datasourceUid,
+        datasourceName: dsSettings?.name ?? 'Data source not found',
+      },
+    };
+  } else {
+    return {
+      title: linkConfig.urlDisplayLabel || '',
+      url: linkConfig.url,
+    };
   }
 }
 

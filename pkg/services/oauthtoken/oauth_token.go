@@ -68,11 +68,6 @@ func (o *Service) GetCurrentOAuthToken(ctx context.Context, user *models.SignedI
 		RefreshToken: authInfoQuery.Result.OAuthRefreshToken,
 		TokenType:    authInfoQuery.Result.OAuthTokenType,
 	}
-
-	if authInfoQuery.Result.OAuthIdToken != "" {
-		persistedToken = persistedToken.WithExtra(map[string]interface{}{"id_token": authInfoQuery.Result.OAuthIdToken})
-	}
-
 	// TokenSource handles refreshing the token if it has expired
 	token, err := connect.TokenSource(ctx, persistedToken).Token()
 	if err != nil {
@@ -88,7 +83,7 @@ func (o *Service) GetCurrentOAuthToken(ctx context.Context, user *models.SignedI
 			AuthId:     authInfoQuery.Result.AuthId,
 			OAuthToken: token,
 		}
-		if err := bus.DispatchCtx(ctx, updateAuthCommand); err != nil {
+		if err := bus.Dispatch(updateAuthCommand); err != nil {
 			logger.Error("failed to update auth info during token refresh", "userId", user.UserId, "username", user.Login, "error", err)
 			return nil
 		}

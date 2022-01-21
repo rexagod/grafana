@@ -6,9 +6,7 @@ var config = {
     chromeLaunchConfig: {
       args: ['--no-sandbox'],
     },
-    // see https://github.com/grafana/grafana/pull/41693#issuecomment-979921463 for context
-    // on why we're ignoring singleValue/react-select-*-placeholder elements
-    hideElements: '#updateVersion, [class*="-singleValue"], [id^="react-select-"][id$="-placeholder"]',
+    hideElements: '#updateVersion',
   },
 
   urls: [

@@ -197,7 +197,7 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 	if err != nil {
 		return nil, err
 	}
-	tracer, err := tracing.ProvideService(cfg)
+	tracingService, err := tracing.ProvideService(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 	updatecheckerService := updatechecker.ProvideService(cfg)
 	ossSearchUserFilter := filters.ProvideOSSSearchUserFilter()
 	ossService := searchusers.ProvideUsersService(inProcBus, ossSearchUserFilter)
-	httpServer, err := api.ProvideHTTPServer(apiOpts, cfg, routeRegisterImpl, inProcBus, renderingService, ossLicensingService, hooksService, cacheService, sqlStore, alertEngine, ossPluginRequestValidator, pluginManager, pluginManager, pluginManager, pluginManager, loaderLoader, ossImpl, cacheServiceImpl, userAuthTokenService, cleanUpService, shortURLService, remoteCache, provisioningServiceImpl, loginserviceImplementation, ossAccessControlService, dataSourceProxyService, searchService, grafanaLive, gateway, plugincontextProvider, contextHandler, schemaLoaderService, alertNG, libraryPanelService, libraryElementService, notificationService, tracer, internalMetricsService, quotaService, socialService, oauthtokenService, ossencryptionService, updatecheckerService, ossService, datasourcesService, secretsService, exprService)
+	httpServer, err := api.ProvideHTTPServer(apiOpts, cfg, routeRegisterImpl, inProcBus, renderingService, ossLicensingService, hooksService, cacheService, sqlStore, serviceService, alertEngine, ossPluginRequestValidator, pluginManager, pluginManager, pluginManager, pluginManager, loaderLoader, ossImpl, cacheServiceImpl, userAuthTokenService, cleanUpService, shortURLService, remoteCache, provisioningServiceImpl, loginserviceImplementation, ossAccessControlService, dataSourceProxyService, searchService, grafanaLive, gateway, plugincontextProvider, contextHandler, schemaLoaderService, alertNG, libraryPanelService, libraryElementService, notificationService, tracingService, internalMetricsService, quotaService, socialService, oauthtokenService, ossencryptionService, updatecheckerService, ossService, datasourcesService, secretsService, exprService)
 	if err != nil {
 		return nil, err
 	}
@@ -217,31 +217,31 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 	if err != nil {
 		return nil, err
 	}
-	elasticsearchService, err := elasticsearch.ProvideService(cfg, provider, pluginManager)
+	elasticsearchService, err := elasticsearch.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	graphiteService, err := graphite.ProvideService(cfg, provider, pluginManager)
+	graphiteService, err := graphite.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	influxdbService, err := influxdb.ProvideService(cfg, provider, pluginManager)
+	influxdbService, err := influxdb.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	lokiService, err := loki.ProvideService(cfg, provider, pluginManager)
+	lokiService, err := loki.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	opentsdbService, err := opentsdb.ProvideService(cfg, provider, pluginManager)
+	opentsdbService, err := opentsdb.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	prometheusService, err := prometheus.ProvideService(cfg, provider, pluginManager)
+	prometheusService, err := prometheus.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	tempoService, err := tempo.ProvideService(cfg, provider, pluginManager)
+	tempoService, err := tempo.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 	if err != nil {
 		return nil, err
 	}
-	backgroundServiceRegistry := backgroundsvcs.ProvideBackgroundServiceRegistry(httpServer, alertNG, cleanUpService, grafanaLive, gateway, notificationService, renderingService, userAuthTokenService, provisioningServiceImpl, alertEngine, pluginManager, internalMetricsService, usageStats, updatecheckerService, tracer, remoteCache, azuremonitorService, cloudWatchService, elasticsearchService, graphiteService, influxdbService, lokiService, opentsdbService, prometheusService, tempoService, testdatasourceService, plugindashboardsService, dashboardsnapshotsService, postgresService, mysqlService, mssqlService, grafanadsService, cloudmonitoringService, pluginsettingsService, alertNotificationService, serviceAccountsService)
+	backgroundServiceRegistry := backgroundsvcs.ProvideBackgroundServiceRegistry(httpServer, alertNG, cleanUpService, grafanaLive, gateway, notificationService, renderingService, userAuthTokenService, provisioningServiceImpl, alertEngine, pluginManager, internalMetricsService, usageStats, updatecheckerService, tracingService, remoteCache, secretsService, azuremonitorService, cloudWatchService, elasticsearchService, graphiteService, influxdbService, lokiService, opentsdbService, prometheusService, tempoService, testdatasourceService, plugindashboardsService, dashboardsnapshotsService, postgresService, mysqlService, mssqlService, grafanadsService, cloudmonitoringService, pluginsettingsService, alertNotificationService, serviceAccountsService)
 	server, err := New(opts, cfg, httpServer, ossAccessControlService, provisioningServiceImpl, backgroundServiceRegistry)
 	if err != nil {
 		return nil, err
@@ -375,7 +375,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 	if err != nil {
 		return nil, err
 	}
-	tracer, err := tracing.ProvideService(cfg)
+	tracingService, err := tracing.ProvideService(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 	updatecheckerService := updatechecker.ProvideService(cfg)
 	ossSearchUserFilter := filters.ProvideOSSSearchUserFilter()
 	ossService := searchusers.ProvideUsersService(inProcBus, ossSearchUserFilter)
-	httpServer, err := api.ProvideHTTPServer(apiOpts, cfg, routeRegisterImpl, inProcBus, renderingService, ossLicensingService, hooksService, cacheService, sqlStore, alertEngine, ossPluginRequestValidator, pluginManager, pluginManager, pluginManager, pluginManager, loaderLoader, ossImpl, cacheServiceImpl, userAuthTokenService, cleanUpService, shortURLService, remoteCache, provisioningServiceImpl, loginserviceImplementation, ossAccessControlService, dataSourceProxyService, searchService, grafanaLive, gateway, plugincontextProvider, contextHandler, schemaLoaderService, alertNG, libraryPanelService, libraryElementService, notificationService, tracer, internalMetricsService, quotaService, socialService, oauthtokenService, ossencryptionService, updatecheckerService, ossService, datasourcesService, secretsService, exprService)
+	httpServer, err := api.ProvideHTTPServer(apiOpts, cfg, routeRegisterImpl, inProcBus, renderingService, ossLicensingService, hooksService, cacheService, sqlStore, serviceService, alertEngine, ossPluginRequestValidator, pluginManager, pluginManager, pluginManager, pluginManager, loaderLoader, ossImpl, cacheServiceImpl, userAuthTokenService, cleanUpService, shortURLService, remoteCache, provisioningServiceImpl, loginserviceImplementation, ossAccessControlService, dataSourceProxyService, searchService, grafanaLive, gateway, plugincontextProvider, contextHandler, schemaLoaderService, alertNG, libraryPanelService, libraryElementService, notificationService, tracingService, internalMetricsService, quotaService, socialService, oauthtokenService, ossencryptionService, updatecheckerService, ossService, datasourcesService, secretsService, exprService)
 	if err != nil {
 		return nil, err
 	}
@@ -395,31 +395,31 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 	if err != nil {
 		return nil, err
 	}
-	elasticsearchService, err := elasticsearch.ProvideService(cfg, provider, pluginManager)
+	elasticsearchService, err := elasticsearch.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	graphiteService, err := graphite.ProvideService(cfg, provider, pluginManager)
+	graphiteService, err := graphite.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	influxdbService, err := influxdb.ProvideService(cfg, provider, pluginManager)
+	influxdbService, err := influxdb.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	lokiService, err := loki.ProvideService(cfg, provider, pluginManager)
+	lokiService, err := loki.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	opentsdbService, err := opentsdb.ProvideService(cfg, provider, pluginManager)
+	opentsdbService, err := opentsdb.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	prometheusService, err := prometheus.ProvideService(cfg, provider, pluginManager)
+	prometheusService, err := prometheus.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
-	tempoService, err := tempo.ProvideService(cfg, provider, pluginManager)
+	tempoService, err := tempo.ProvideService(provider, pluginManager)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +448,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 	if err != nil {
 		return nil, err
 	}
-	backgroundServiceRegistry := backgroundsvcs.ProvideBackgroundServiceRegistry(httpServer, alertNG, cleanUpService, grafanaLive, gateway, notificationService, renderingService, userAuthTokenService, provisioningServiceImpl, alertEngine, pluginManager, internalMetricsService, usageStats, updatecheckerService, tracer, remoteCache, azuremonitorService, cloudWatchService, elasticsearchService, graphiteService, influxdbService, lokiService, opentsdbService, prometheusService, tempoService, testdatasourceService, plugindashboardsService, dashboardsnapshotsService, postgresService, mysqlService, mssqlService, grafanadsService, cloudmonitoringService, pluginsettingsService, alertNotificationService, serviceAccountsService)
+	backgroundServiceRegistry := backgroundsvcs.ProvideBackgroundServiceRegistry(httpServer, alertNG, cleanUpService, grafanaLive, gateway, notificationService, renderingService, userAuthTokenService, provisioningServiceImpl, alertEngine, pluginManager, internalMetricsService, usageStats, updatecheckerService, tracingService, remoteCache, secretsService, azuremonitorService, cloudWatchService, elasticsearchService, graphiteService, influxdbService, lokiService, opentsdbService, prometheusService, tempoService, testdatasourceService, plugindashboardsService, dashboardsnapshotsService, postgresService, mysqlService, mssqlService, grafanadsService, cloudmonitoringService, pluginsettingsService, alertNotificationService, serviceAccountsService)
 	server, err := New(opts, cfg, httpServer, ossAccessControlService, provisioningServiceImpl, backgroundServiceRegistry)
 	if err != nil {
 		return nil, err
@@ -462,7 +462,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 
 // wire.go:
 
-var wireBasicSet = wire.NewSet(service2.ProvideService, wire.Bind(new(legacydata.RequestHandler), new(*service2.Service)), alerting.ProvideAlertEngine, wire.Bind(new(alerting.UsageStatsQuerier), new(*alerting.AlertEngine)), setting.NewCfgFromArgs, New, api.ProvideHTTPServer, bus.ProvideBus, wire.Bind(new(bus.Bus), new(*bus.InProcBus)), rendering.ProvideService, wire.Bind(new(rendering.Service), new(*rendering.RenderingService)), routing.ProvideRegister, wire.Bind(new(routing.RouteRegister), new(*routing.RouteRegisterImpl)), hooks.ProvideService, kvstore.ProvideService, localcache.ProvideService, updatechecker.ProvideService, service.ProvideService, wire.Bind(new(usagestats.Service), new(*service.UsageStats)), manager.ProvideService, wire.Bind(new(plugins.Client), new(*manager.PluginManager)), wire.Bind(new(plugins.Store), new(*manager.PluginManager)), wire.Bind(new(plugins.StaticRouteResolver), new(*manager.PluginManager)), wire.Bind(new(plugins.PluginDashboardManager), new(*manager.PluginManager)), wire.Bind(new(plugins.RendererManager), new(*manager.PluginManager)), loader.ProvideService, wire.Bind(new(plugins.Loader), new(*loader.Loader)), wire.Bind(new(plugins.ErrorResolver), new(*loader.Loader)), cloudwatch.ProvideService, cloudwatch.ProvideLogsService, cloudmonitoring.ProvideService, azuremonitor.ProvideService, postgres.ProvideService, mysql.ProvideService, mssql.ProvideService, httpclientprovider.New, wire.Bind(new(httpclient.Provider), new(*httpclient2.Provider)), serverlock.ProvideService, cleanup.ProvideService, shorturls.ProvideService, wire.Bind(new(shorturls.Service), new(*shorturls.ShortURLService)), quota.ProvideService, remotecache.ProvideService, loginservice.ProvideService, wire.Bind(new(login.Service), new(*loginservice.Implementation)), authinfoservice.ProvideAuthInfoService, wire.Bind(new(login.AuthInfoService), new(*authinfoservice.Implementation)), datasourceproxy.ProvideService, search.ProvideService, live.ProvideService, pushhttp.ProvideService, plugincontext.ProvideService, contexthandler.ProvideService, jwt.ProvideService, wire.Bind(new(models.JWTService), new(*jwt.AuthService)), plugindashboards.ProvideService, schemaloader.ProvideService, ngalert.ProvideService, librarypanels.ProvideService, wire.Bind(new(librarypanels.Service), new(*librarypanels.LibraryPanelService)), libraryelements.ProvideService, wire.Bind(new(libraryelements.Service), new(*libraryelements.LibraryElementService)), notifications.ProvideService, tracing.ProvideService, metrics2.ProvideService, testdatasource.ProvideService, opentsdb.ProvideService, social.ProvideService, influxdb.ProvideService, wire.Bind(new(social.Service), new(*social.SocialService)), oauthtoken.ProvideService, wire.Bind(new(oauthtoken.OAuthTokenService), new(*oauthtoken.Service)), tempo.ProvideService, loki.ProvideService, graphite.ProvideService, prometheus.ProvideService, elasticsearch.ProvideService, manager2.ProvideSecretsService, wire.Bind(new(secrets.Service), new(*manager2.SecretsService)), database.ProvideSecretsStore, wire.Bind(new(secrets.Store), new(*database.SecretsStoreImpl)), grafanads.ProvideService, dashboardsnapshots.ProvideService, datasources.ProvideService, pluginsettings.ProvideService, alerting.ProvideService, manager3.ProvideServiceAccountsService, wire.Bind(new(serviceaccounts.Service), new(*manager3.ServiceAccountsService)), expr.ProvideService)
+var wireBasicSet = wire.NewSet(service2.ProvideService, wire.Bind(new(legacydata.RequestHandler), new(*service2.Service)), alerting.ProvideAlertEngine, wire.Bind(new(alerting.UsageStatsQuerier), new(*alerting.AlertEngine)), setting.NewCfgFromArgs, New, api.ProvideHTTPServer, bus.ProvideBus, wire.Bind(new(bus.Bus), new(*bus.InProcBus)), rendering.ProvideService, wire.Bind(new(rendering.Service), new(*rendering.RenderingService)), routing.ProvideRegister, wire.Bind(new(routing.RouteRegister), new(*routing.RouteRegisterImpl)), hooks.ProvideService, kvstore.ProvideService, localcache.ProvideService, updatechecker.ProvideService, service.ProvideService, wire.Bind(new(usagestats.Service), new(*service.UsageStats)), manager.ProvideService, wire.Bind(new(plugins.Client), new(*manager.PluginManager)), wire.Bind(new(plugins.Store), new(*manager.PluginManager)), wire.Bind(new(plugins.CoreBackendRegistrar), new(*manager.PluginManager)), wire.Bind(new(plugins.StaticRouteResolver), new(*manager.PluginManager)), wire.Bind(new(plugins.PluginDashboardManager), new(*manager.PluginManager)), wire.Bind(new(plugins.RendererManager), new(*manager.PluginManager)), loader.ProvideService, wire.Bind(new(plugins.Loader), new(*loader.Loader)), wire.Bind(new(plugins.ErrorResolver), new(*loader.Loader)), cloudwatch.ProvideService, cloudwatch.ProvideLogsService, cloudmonitoring.ProvideService, azuremonitor.ProvideService, postgres.ProvideService, mysql.ProvideService, mssql.ProvideService, httpclientprovider.New, wire.Bind(new(httpclient.Provider), new(*httpclient2.Provider)), serverlock.ProvideService, cleanup.ProvideService, shorturls.ProvideService, wire.Bind(new(shorturls.Service), new(*shorturls.ShortURLService)), quota.ProvideService, remotecache.ProvideService, loginservice.ProvideService, wire.Bind(new(login.Service), new(*loginservice.Implementation)), authinfoservice.ProvideAuthInfoService, wire.Bind(new(login.AuthInfoService), new(*authinfoservice.Implementation)), datasourceproxy.ProvideService, search.ProvideService, live.ProvideService, pushhttp.ProvideService, plugincontext.ProvideService, contexthandler.ProvideService, jwt.ProvideService, wire.Bind(new(models.JWTService), new(*jwt.AuthService)), plugindashboards.ProvideService, schemaloader.ProvideService, ngalert.ProvideService, librarypanels.ProvideService, wire.Bind(new(librarypanels.Service), new(*librarypanels.LibraryPanelService)), libraryelements.ProvideService, wire.Bind(new(libraryelements.Service), new(*libraryelements.LibraryElementService)), notifications.ProvideService, tracing.ProvideService, metrics2.ProvideService, testdatasource.ProvideService, opentsdb.ProvideService, social.ProvideService, influxdb.ProvideService, wire.Bind(new(social.Service), new(*social.SocialService)), oauthtoken.ProvideService, wire.Bind(new(oauthtoken.OAuthTokenService), new(*oauthtoken.Service)), tempo.ProvideService, loki.ProvideService, graphite.ProvideService, prometheus.ProvideService, elasticsearch.ProvideService, manager2.ProvideSecretsService, wire.Bind(new(secrets.Service), new(*manager2.SecretsService)), database.ProvideSecretsStore, wire.Bind(new(secrets.Store), new(*database.SecretsStoreImpl)), grafanads.ProvideService, dashboardsnapshots.ProvideService, datasources.ProvideService, pluginsettings.ProvideService, alerting.ProvideService, manager3.ProvideServiceAccountsService, wire.Bind(new(serviceaccounts.Service), new(*manager3.ServiceAccountsService)), expr.ProvideService)
 
 var wireSet = wire.NewSet(
 	wireBasicSet, sqlstore.ProvideService, metrics.ProvideService,

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/guardian"
 	"github.com/grafana/grafana/pkg/util"
 	"github.com/grafana/grafana/pkg/web"
+	"gopkg.in/macaron.v1"
 )
 
 const (
@@ -49,11 +49,7 @@ func dashboardGuardianResponse(err error) response.Response {
 	return response.Error(403, "Access denied to this dashboard", nil)
 }
 
-func (hs *HTTPServer) TrimDashboard(c *models.ReqContext) response.Response {
-	cmd := models.TrimDashboardCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) TrimDashboard(c *models.ReqContext, cmd models.TrimDashboardCommand) response.Response {
 	var err error
 	dash := cmd.Dashboard
 	meta := cmd.Meta
@@ -222,7 +218,7 @@ func getDashboardHelper(ctx context.Context, orgID int64, id int64, uid string) 
 func (hs *HTTPServer) DeleteDashboardBySlug(c *models.ReqContext) response.Response {
 	query := models.GetDashboardsBySlugQuery{OrgId: c.OrgId, Slug: web.Params(c.Req)[":slug"]}
 
-	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
+	if err := bus.Dispatch(&query); err != nil {
 		return response.Error(500, "Failed to retrieve dashboards by slug", err)
 	}
 
@@ -255,7 +251,7 @@ func (hs *HTTPServer) deleteDashboard(c *models.ReqContext) response.Response {
 	}
 
 	svc := dashboards.NewService(hs.SQLStore)
-	err = svc.DeleteDashboard(c.Req.Context(), dash.Id, c.OrgId)
+	err = svc.DeleteDashboard(dash.Id, c.OrgId)
 	if err != nil {
 		var dashboardErr models.DashboardErr
 		if ok := errors.As(err, &dashboardErr); ok {
@@ -281,15 +277,7 @@ func (hs *HTTPServer) deleteDashboard(c *models.ReqContext) response.Response {
 	})
 }
 
-func (hs *HTTPServer) PostDashboard(c *models.ReqContext) response.Response {
-	cmd := models.SaveDashboardCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
-	return hs.postDashboard(c, cmd)
-}
-
-func (hs *HTTPServer) postDashboard(c *models.ReqContext, cmd models.SaveDashboardCommand) response.Response {
+func (hs *HTTPServer) PostDashboard(c *models.ReqContext, cmd models.SaveDashboardCommand) response.Response {
 	ctx := c.Req.Context()
 	var err error
 	cmd.OrgId = c.OrgId
@@ -344,7 +332,7 @@ func (hs *HTTPServer) postDashboard(c *models.ReqContext, cmd models.SaveDashboa
 	}
 
 	dashSvc := dashboards.NewService(hs.SQLStore)
-	dashboard, err := dashSvc.SaveDashboard(alerting.WithUAEnabled(ctx, hs.Cfg.UnifiedAlerting.IsEnabled()), dashItem, allowUiUpdate)
+	dashboard, err := dashSvc.SaveDashboard(ctx, dashItem, allowUiUpdate)
 
 	if hs.Live != nil {
 		// Tell everyone listening that the dashboard changed
@@ -565,7 +553,7 @@ func GetDashboardVersion(c *models.ReqContext) response.Response {
 		return dashboardGuardianResponse(err)
 	}
 
-	version, _ := strconv.ParseInt(web.Params(c.Req)[":id"], 10, 32)
+	version, _ := strconv.ParseInt(macaron.Params(c.Req)[":id"], 10, 32)
 	query := models.GetDashboardVersionQuery{
 		OrgId:       c.OrgId,
 		DashboardId: dashID,
@@ -597,11 +585,7 @@ func GetDashboardVersion(c *models.ReqContext) response.Response {
 }
 
 // POST /api/dashboards/calculate-diff performs diffs on two dashboards
-func CalculateDashboardDiff(c *models.ReqContext) response.Response {
-	apiOptions := dtos.CalculateDiffOptions{}
-	if err := web.Bind(c.Req, &apiOptions); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func CalculateDashboardDiff(c *models.ReqContext, apiOptions dtos.CalculateDiffOptions) response.Response {
 	guardianBase := guardian.New(c.Req.Context(), apiOptions.Base.DashboardId, c.OrgId, c.SignedInUser)
 	if canSave, err := guardianBase.CanSave(); err != nil || !canSave {
 		return dashboardGuardianResponse(err)
@@ -645,11 +629,7 @@ func CalculateDashboardDiff(c *models.ReqContext) response.Response {
 }
 
 // RestoreDashboardVersion restores a dashboard to the given version.
-func (hs *HTTPServer) RestoreDashboardVersion(c *models.ReqContext) response.Response {
-	apiCmd := dtos.RestoreDashboardVersionCommand{}
-	if err := web.Bind(c.Req, &apiCmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) RestoreDashboardVersion(c *models.ReqContext, apiCmd dtos.RestoreDashboardVersionCommand) response.Response {
 	dash, rsp := getDashboardHelper(c.Req.Context(), c.OrgId, c.ParamsInt64(":dashboardId"), "")
 	if rsp != nil {
 		return rsp
@@ -677,7 +657,7 @@ func (hs *HTTPServer) RestoreDashboardVersion(c *models.ReqContext) response.Res
 	saveCmd.Message = fmt.Sprintf("Restored from version %d", version.Version)
 	saveCmd.FolderId = dash.FolderId
 
-	return hs.postDashboard(c, saveCmd)
+	return hs.PostDashboard(c, saveCmd)
 }
 
 func GetDashboardTags(c *models.ReqContext) {

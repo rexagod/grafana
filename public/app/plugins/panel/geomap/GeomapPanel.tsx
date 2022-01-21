@@ -453,8 +453,6 @@ export class GeomapPanel extends Component<Props, State> {
       layer,
       handler,
 
-      getName: () => UID,
-
       // Used by the editors
       onChange: (cfg: MapLayerOptions) => {
         this.updateLayer(UID, cfg);

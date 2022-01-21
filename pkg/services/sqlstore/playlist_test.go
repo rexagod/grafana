@@ -4,7 +4,6 @@
 package sqlstore
 
 import (
-	"context"
 	"testing"
 
 	"github.com/grafana/grafana/pkg/models"
@@ -12,7 +11,7 @@ import (
 )
 
 func TestPlaylistDataAccess(t *testing.T) {
-	ss := InitTestDB(t)
+	InitTestDB(t)
 
 	t.Run("Can create playlist", func(t *testing.T) {
 		items := []models.PlaylistItemDTO{
@@ -20,7 +19,7 @@ func TestPlaylistDataAccess(t *testing.T) {
 			{Title: "Backend response times", Value: "3", Type: "dashboard_by_id"},
 		}
 		cmd := models.CreatePlaylistCommand{Name: "NYC office", Interval: "10m", OrgId: 1, Items: items}
-		err := ss.CreatePlaylist(context.Background(), &cmd)
+		err := CreatePlaylist(&cmd)
 		require.NoError(t, err)
 
 		t.Run("Can update playlist", func(t *testing.T) {
@@ -29,17 +28,17 @@ func TestPlaylistDataAccess(t *testing.T) {
 				{Title: "Backend response times", Value: "2", Type: "dashboard_by_id"},
 			}
 			query := models.UpdatePlaylistCommand{Name: "NYC office ", OrgId: 1, Id: 1, Interval: "10s", Items: items}
-			err = ss.UpdatePlaylist(context.Background(), &query)
+			err = UpdatePlaylist(&query)
 			require.NoError(t, err)
 		})
 
 		t.Run("Can remove playlist", func(t *testing.T) {
 			deleteQuery := models.DeletePlaylistCommand{Id: 1, OrgId: 1}
-			err = ss.DeletePlaylist(context.Background(), &deleteQuery)
+			err = DeletePlaylist(&deleteQuery)
 			require.NoError(t, err)
 
 			getQuery := models.GetPlaylistByIdQuery{Id: 1}
-			err = ss.GetPlaylist(context.Background(), &getQuery)
+			err = GetPlaylist(&getQuery)
 			require.NoError(t, err)
 			require.Equal(t, int64(0), getQuery.Result.Id, "playlist should've been removed")
 		})
@@ -47,7 +46,7 @@ func TestPlaylistDataAccess(t *testing.T) {
 
 	t.Run("Delete playlist that doesn't exist", func(t *testing.T) {
 		deleteQuery := models.DeletePlaylistCommand{Id: 1, OrgId: 1}
-		err := ss.DeletePlaylist(context.Background(), &deleteQuery)
+		err := DeletePlaylist(&deleteQuery)
 		require.NoError(t, err)
 	})
 
@@ -63,7 +62,7 @@ func TestPlaylistDataAccess(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.desc, func(t *testing.T) {
-				err := ss.DeletePlaylist(context.Background(), &tc.cmd)
+				err := DeletePlaylist(&tc.cmd)
 				require.EqualError(t, err, models.ErrCommandValidationFailed.Error())
 			})
 		}

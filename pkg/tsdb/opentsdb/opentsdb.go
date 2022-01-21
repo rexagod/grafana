@@ -25,14 +25,12 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 )
 
-const pluginID = "opentsdb"
-
 type Service struct {
 	logger log.Logger
 	im     instancemgmt.InstanceManager
 }
 
-func ProvideService(cfg *setting.Cfg, httpClientProvider httpclient.Provider, pluginStore plugins.Store) (*Service, error) {
+func ProvideService(httpClientProvider httpclient.Provider, registrar plugins.CoreBackendRegistrar) (*Service, error) {
 	im := datasource.NewInstanceManager(newInstanceSettings(httpClientProvider))
 	s := &Service{
 		logger: log.New("tsdb.opentsdb"),
@@ -42,8 +40,7 @@ func ProvideService(cfg *setting.Cfg, httpClientProvider httpclient.Provider, pl
 	factory := coreplugin.New(backend.ServeOpts{
 		QueryDataHandler: s,
 	})
-	resolver := plugins.CoreDataSourcePathResolver(cfg, pluginID)
-	if err := pluginStore.AddWithFactory(context.Background(), pluginID, factory, resolver); err != nil {
+	if err := registrar.LoadAndRegister("opentsdb", factory); err != nil {
 		return nil, err
 	}
 

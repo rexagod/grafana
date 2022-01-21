@@ -40,7 +40,7 @@ func TestUserAuth(t *testing.T) {
 			login := "loginuser0"
 
 			query := &models.GetUserByAuthInfoQuery{Login: login}
-			user, err := srv.LookupAndUpdate(context.Background(), query)
+			user, err := srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, login)
@@ -73,7 +73,7 @@ func TestUserAuth(t *testing.T) {
 		t.Run("Can set & locate by AuthModule and AuthId", func(t *testing.T) {
 			// get nonexistent user_auth entry
 			query := &models.GetUserByAuthInfoQuery{AuthModule: "test", AuthId: "test"}
-			user, err := srv.LookupAndUpdate(context.Background(), query)
+			user, err := srv.LookupAndUpdate(query)
 
 			require.Equal(t, models.ErrUserNotFound, err)
 			require.Nil(t, user)
@@ -82,14 +82,14 @@ func TestUserAuth(t *testing.T) {
 			login := "loginuser0"
 
 			query.Login = login
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, login)
 
 			// get via user_auth
 			query = &models.GetUserByAuthInfoQuery{AuthModule: "test", AuthId: "test"}
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, login)
@@ -98,14 +98,14 @@ func TestUserAuth(t *testing.T) {
 			id := user.Id
 
 			query.UserId = id + 1
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, "loginuser1")
 
 			// get via user_auth
 			query = &models.GetUserByAuthInfoQuery{AuthModule: "test", AuthId: "test"}
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, "loginuser1")
@@ -120,7 +120,7 @@ func TestUserAuth(t *testing.T) {
 
 			// get via user_auth for deleted user
 			query = &models.GetUserByAuthInfoQuery{AuthModule: "test", AuthId: "test"}
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 
 			require.Equal(t, err, models.ErrUserNotFound)
 			require.Nil(t, user)
@@ -133,15 +133,13 @@ func TestUserAuth(t *testing.T) {
 				Expiry:       time.Now(),
 				TokenType:    "Bearer",
 			}
-			idToken := "testidtoken"
-			token = token.WithExtra(map[string]interface{}{"id_token": idToken})
 
 			// Find a user to set tokens on
 			login := "loginuser0"
 
 			// Calling GetUserByAuthInfoQuery on an existing user will populate an entry in the user_auth table
 			query := &models.GetUserByAuthInfoQuery{Login: login, AuthModule: "test", AuthId: "test"}
-			user, err := srv.LookupAndUpdate(context.Background(), query)
+			user, err := srv.LookupAndUpdate(query)
 
 			require.Nil(t, err)
 			require.Equal(t, user.Login, login)
@@ -152,7 +150,7 @@ func TestUserAuth(t *testing.T) {
 				AuthModule: query.AuthModule,
 				OAuthToken: token,
 			}
-			err = srv.UpdateAuthInfo(context.Background(), cmd)
+			err = srv.UpdateAuthInfo(cmd)
 
 			require.Nil(t, err)
 
@@ -160,13 +158,12 @@ func TestUserAuth(t *testing.T) {
 				UserId: user.Id,
 			}
 
-			err = srv.GetAuthInfo(context.Background(), getAuthQuery)
+			err = srv.GetAuthInfo(getAuthQuery)
 
 			require.Nil(t, err)
-			require.Equal(t, token.AccessToken, getAuthQuery.Result.OAuthAccessToken)
-			require.Equal(t, token.RefreshToken, getAuthQuery.Result.OAuthRefreshToken)
-			require.Equal(t, token.TokenType, getAuthQuery.Result.OAuthTokenType)
-			require.Equal(t, idToken, getAuthQuery.Result.OAuthIdToken)
+			require.Equal(t, getAuthQuery.Result.OAuthAccessToken, token.AccessToken)
+			require.Equal(t, getAuthQuery.Result.OAuthRefreshToken, token.RefreshToken)
+			require.Equal(t, getAuthQuery.Result.OAuthTokenType, token.TokenType)
 		})
 
 		t.Run("Always return the most recently used auth_module", func(t *testing.T) {
@@ -190,7 +187,7 @@ func TestUserAuth(t *testing.T) {
 			// Make the first log-in during the past
 			getTime = func() time.Time { return time.Now().AddDate(0, 0, -2) }
 			query := &models.GetUserByAuthInfoQuery{Login: login, AuthModule: "test1", AuthId: "test1"}
-			user, err := srv.LookupAndUpdate(context.Background(), query)
+			user, err := srv.LookupAndUpdate(query)
 			getTime = time.Now
 
 			require.Nil(t, err)
@@ -200,7 +197,7 @@ func TestUserAuth(t *testing.T) {
 			// Have this module's last log-in be more recent
 			getTime = func() time.Time { return time.Now().AddDate(0, 0, -1) }
 			query = &models.GetUserByAuthInfoQuery{Login: login, AuthModule: "test2", AuthId: "test2"}
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 			getTime = time.Now
 
 			require.Nil(t, err)
@@ -211,14 +208,14 @@ func TestUserAuth(t *testing.T) {
 				UserId: user.Id,
 			}
 
-			err = srv.GetAuthInfo(context.Background(), getAuthQuery)
+			err = srv.GetAuthInfo(getAuthQuery)
 
 			require.Nil(t, err)
 			require.Equal(t, getAuthQuery.Result.AuthModule, "test2")
 
 			// "log in" again with the first auth module
 			updateAuthCmd := &models.UpdateAuthInfoCommand{UserId: user.Id, AuthModule: "test1", AuthId: "test1"}
-			err = srv.UpdateAuthInfo(context.Background(), updateAuthCmd)
+			err = srv.UpdateAuthInfo(updateAuthCmd)
 
 			require.Nil(t, err)
 
@@ -227,7 +224,7 @@ func TestUserAuth(t *testing.T) {
 				UserId: user.Id,
 			}
 
-			err = srv.GetAuthInfo(context.Background(), getAuthQuery)
+			err = srv.GetAuthInfo(getAuthQuery)
 
 			require.Nil(t, err)
 			require.Equal(t, getAuthQuery.Result.AuthModule, "test1")
@@ -240,7 +237,7 @@ func TestUserAuth(t *testing.T) {
 			// Expect to pass since there's a matching login user
 			getTime = func() time.Time { return time.Now().AddDate(0, 0, -2) }
 			query := &models.GetUserByAuthInfoQuery{Login: login, AuthModule: genericOAuthModule, AuthId: ""}
-			user, err := srv.LookupAndUpdate(context.Background(), query)
+			user, err := srv.LookupAndUpdate(query)
 			getTime = time.Now
 
 			require.Nil(t, err)
@@ -249,7 +246,7 @@ func TestUserAuth(t *testing.T) {
 			// Should throw a "user not found" error since there's no matching login user
 			getTime = func() time.Time { return time.Now().AddDate(0, 0, -2) }
 			query = &models.GetUserByAuthInfoQuery{Login: "aloginuser", AuthModule: genericOAuthModule, AuthId: ""}
-			user, err = srv.LookupAndUpdate(context.Background(), query)
+			user, err = srv.LookupAndUpdate(query)
 			getTime = time.Now
 
 			require.NotNil(t, err)

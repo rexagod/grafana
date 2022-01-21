@@ -1,8 +1,6 @@
-// Grafana Alerting API.
-//
 // Package definitions includes the types required for generating or consuming an OpenAPI
-// spec for the Grafana Alerting API.
-//
+// spec for the Unified Alerting API.
+// Documentation of the API.
 //
 //     Schemes: http, https
 //     BasePath: /api/v1

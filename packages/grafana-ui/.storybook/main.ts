@@ -2,6 +2,7 @@ const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const FilterWarningsPlugin = require('webpack-filter-warnings-plugin');
+const getBabelConfig = require('../../../scripts/webpack/babel.config');
 
 const stories = ['../src/**/*.story.{js,jsx,ts,tsx,mdx}'];
 
@@ -23,14 +24,10 @@ module.exports = {
     '@storybook/addon-storysource',
     'storybook-dark-mode',
   ],
-  staticDirs: [
-    { from: '../../../public/fonts', to: '/fonts' },
-    { from: '../../../public/img', to: '/public/img' },
-    { from: '../../../public/lib', to: '/public/lib' },
-  ],
-  reactOptions: {
-    fastRefresh: true,
-  },
+  // currently broken in webpack 5 builder support
+  // reactOptions: {
+  //   fastRefresh: true,
+  // },
   core: {
     builder: 'webpack5',
   },
@@ -47,11 +44,6 @@ module.exports = {
   },
   webpackFinal: async (config: any, { configType }: any) => {
     const isProductionBuild = configType === 'PRODUCTION';
-
-    config.resolve.fallback = {
-      ...(config.resolve.fallback || {}),
-      process: false,
-    };
 
     // remove svg from default storybook webpack 5 config so we can use `raw-loader`
     config.module.rules = config.module.rules.map((rule: any) => {

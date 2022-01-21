@@ -47,7 +47,6 @@ export function NavBarMenu({ activeItem, navItems, onClose }: Props) {
                     target={link.target}
                     text={link.text}
                     url={link.url}
-                    isMobile={true}
                   />
                   {link.children?.map(
                     (childLink, childIndex) =>
@@ -65,7 +64,6 @@ export function NavBarMenu({ activeItem, navItems, onClose }: Props) {
                           target={childLink.target}
                           text={childLink.text}
                           url={childLink.url}
-                          isMobile={true}
                         />
                       )
                   )}

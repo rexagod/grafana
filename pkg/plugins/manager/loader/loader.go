@@ -21,6 +21,7 @@ import (
 )
 
 var (
+	logger                       = log.New("plugin.loader")
 	ErrInvalidPluginJSON         = errors.New("did not find valid type or id properties in plugin.json")
 	ErrInvalidPluginJSONFilePath = errors.New("invalid plugin.json filepath was provided")
 )
@@ -32,7 +33,6 @@ type Loader struct {
 	pluginFinder       finder.Finder
 	pluginInitializer  initializer.Initializer
 	signatureValidator signature.Validator
-	log                log.Logger
 
 	errs map[string]*plugins.SignatureError
 }
@@ -48,14 +48,13 @@ func New(license models.Licensing, cfg *setting.Cfg, authorizer plugins.PluginLo
 		pluginInitializer:  initializer.New(cfg, license),
 		signatureValidator: signature.NewValidator(authorizer),
 		errs:               make(map[string]*plugins.SignatureError),
-		log:                log.New("plugin.loader"),
 	}
 }
 
 func (l *Loader) Load(paths []string, ignore map[string]struct{}) ([]*plugins.Plugin, error) {
 	pluginJSONPaths, err := l.pluginFinder.Find(paths)
 	if err != nil {
-		l.log.Error("plugin finder encountered an error", "err", err)
+		logger.Error("plugin finder encountered an error", "err", err)
 	}
 
 	return l.loadPlugins(pluginJSONPaths, ignore)
@@ -64,7 +63,7 @@ func (l *Loader) Load(paths []string, ignore map[string]struct{}) ([]*plugins.Pl
 func (l *Loader) LoadWithFactory(path string, factory backendplugin.PluginFactoryFunc) (*plugins.Plugin, error) {
 	p, err := l.load(path, map[string]struct{}{})
 	if err != nil {
-		l.log.Error("failed to load core plugin", "err", err)
+		logger.Error("failed to load core plugin", "err", err)
 		return nil, err
 	}
 
@@ -76,7 +75,7 @@ func (l *Loader) LoadWithFactory(path string, factory backendplugin.PluginFactor
 func (l *Loader) load(path string, ignore map[string]struct{}) (*plugins.Plugin, error) {
 	pluginJSONPaths, err := l.pluginFinder.Find([]string{path})
 	if err != nil {
-		l.log.Error("failed to find plugin", "err", err)
+		logger.Error("failed to find plugin", "err", err)
 		return nil, err
 	}
 
@@ -99,24 +98,24 @@ func (l *Loader) loadPlugins(pluginJSONPaths []string, existingPlugins map[strin
 	for _, pluginJSONPath := range pluginJSONPaths {
 		plugin, err := l.readPluginJSON(pluginJSONPath)
 		if err != nil {
-			l.log.Warn("Skipping plugin loading as it's plugin.json is invalid", "id", plugin.ID)
+			logger.Warn("Skipping plugin loading as it's plugin.json is invalid", "id", plugin.ID)
 			continue
 		}
 
 		pluginJSONAbsPath, err := filepath.Abs(pluginJSONPath)
 		if err != nil {
-			l.log.Warn("Skipping plugin loading as full plugin.json path could not be calculated", "id", plugin.ID)
+			logger.Warn("Skipping plugin loading as full plugin.json path could not be calculated", "id", plugin.ID)
 			continue
 		}
 
 		if _, dupe := foundPlugins[filepath.Dir(pluginJSONAbsPath)]; dupe {
-			l.log.Warn("Skipping plugin loading as it's a duplicate", "id", plugin.ID)
+			logger.Warn("Skipping plugin loading as it's a duplicate", "id", plugin.ID)
 			continue
 		}
 		foundPlugins[filepath.Dir(pluginJSONAbsPath)] = plugin
 	}
 
-	foundPlugins.stripDuplicates(existingPlugins, l.log)
+	foundPlugins.stripDuplicates(existingPlugins)
 
 	// calculate initial signature state
 	loadedPlugins := make(map[string]*plugins.Plugin)
@@ -127,9 +126,9 @@ func (l *Loader) loadPlugins(pluginJSONPaths []string, existingPlugins map[strin
 			Class:     l.pluginClass(pluginDir),
 		}
 
-		sig, err := signature.Calculate(l.log, plugin)
+		sig, err := signature.Calculate(logger, plugin)
 		if err != nil {
-			l.log.Warn("Could not calculate plugin signature state", "pluginID", plugin.ID, "err", err)
+			logger.Warn("Could not calculate plugin signature state", "pluginID", plugin.ID, "err", err)
 			continue
 		}
 		plugin.Signature = sig.Status
@@ -164,7 +163,7 @@ func (l *Loader) loadPlugins(pluginJSONPaths []string, existingPlugins map[strin
 	for _, plugin := range loadedPlugins {
 		signingError := l.signatureValidator.Validate(plugin)
 		if signingError != nil {
-			l.log.Warn("Skipping loading plugin due to problem with signature",
+			logger.Warn("Skipping loading plugin due to problem with signature",
 				"pluginID", plugin.ID, "status", signingError.SignatureStatus)
 			plugin.SignatureError = signingError
 			l.errs[plugin.ID] = signingError
@@ -181,7 +180,7 @@ func (l *Loader) loadPlugins(pluginJSONPaths []string, existingPlugins map[strin
 			if exists, err := fs.Exists(module); err != nil {
 				return nil, err
 			} else if !exists {
-				l.log.Warn("Plugin missing module.js",
+				logger.Warn("Plugin missing module.js",
 					"pluginID", plugin.ID,
 					"warning", "Missing module.js, If you loaded this plugin from git, make sure to compile it.",
 					"path", module)
@@ -202,7 +201,7 @@ func (l *Loader) loadPlugins(pluginJSONPaths []string, existingPlugins map[strin
 }
 
 func (l *Loader) readPluginJSON(pluginJSONPath string) (plugins.JSONData, error) {
-	l.log.Debug("Loading plugin", "path", pluginJSONPath)
+	logger.Debug("Loading plugin", "path", pluginJSONPath)
 
 	if !strings.EqualFold(filepath.Ext(pluginJSONPath), ".json") {
 		return plugins.JSONData{}, ErrInvalidPluginJSONFilePath
@@ -222,7 +221,7 @@ func (l *Loader) readPluginJSON(pluginJSONPath string) (plugins.JSONData, error)
 	}
 
 	if err := reader.Close(); err != nil {
-		l.log.Warn("Failed to close JSON file", "path", pluginJSONPath, "err", err)
+		logger.Warn("Failed to close JSON file", "path", pluginJSONPath, "err", err)
 	}
 
 	if err := validatePluginJSON(plugin); err != nil {
@@ -284,11 +283,11 @@ func (l *Loader) pluginClass(pluginDir string) plugins.Class {
 type foundPlugins map[string]plugins.JSONData
 
 // stripDuplicates will strip duplicate plugins or plugins that already exist
-func (f *foundPlugins) stripDuplicates(existingPlugins map[string]struct{}, log log.Logger) {
+func (f *foundPlugins) stripDuplicates(existingPlugins map[string]struct{}) {
 	pluginsByID := make(map[string]struct{})
 	for path, scannedPlugin := range *f {
 		if _, existing := existingPlugins[scannedPlugin.ID]; existing {
-			log.Debug("Skipping plugin as it's already installed", "plugin", scannedPlugin.ID)
+			logger.Debug("Skipping plugin as it's already installed", "plugin", scannedPlugin.ID)
 			delete(*f, path)
 			continue
 		}

@@ -7,6 +7,7 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
+const getBabelConfig = require('./babel.config');
 
 module.exports = (env = {}) =>
   merge(common, {
@@ -27,10 +28,7 @@ module.exports = (env = {}) =>
           use: [
             {
               loader: 'babel-loader',
-              options: {
-                cacheDirectory: true,
-                cacheCompression: false,
-              },
+              options: getBabelConfig(),
             },
           ],
         },

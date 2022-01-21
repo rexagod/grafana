@@ -5,15 +5,14 @@ import { cloneDeep } from 'lodash';
 import { GrafanaTheme2, NavModelItem, NavSection } from '@grafana/data';
 import { Icon, IconName, useTheme2 } from '@grafana/ui';
 import { locationService } from '@grafana/runtime';
+import { Branding } from 'app/core/components/Branding/Branding';
 import config from 'app/core/config';
 import { KioskMode } from 'app/types';
 import { enrichConfigItems, getActiveItem, isMatchOrChildMatch, isSearchActive, SEARCH_ITEM_ID } from './utils';
 import { OrgSwitcher } from '../OrgSwitcher';
 import { NavBarSection } from './NavBarSection';
-import { NavBarMenu } from './NavBarMenu';
 import NavBarItem from './NavBarItem';
-import { NavBarItemWithoutMenu } from './NavBarItemWithoutMenu';
-import { Branding } from '../Branding/Branding';
+import { NavBarMenu } from './NavBarMenu';
 
 const onOpenSearch = () => {
   locationService.partial({ search: 'open' });
@@ -23,7 +22,6 @@ const searchItem: NavModelItem = {
   id: SEARCH_ITEM_ID,
   onClick: onOpenSearch,
   text: 'Search dashboards',
-  icon: 'search',
 };
 
 export const NavBarNext: FC = React.memo(() => {
@@ -58,10 +56,20 @@ export const NavBarNext: FC = React.memo(() => {
       </div>
 
       <NavBarSection>
-        <NavBarItemWithoutMenu label="Main menu" className={styles.grafanaLogo} onClick={() => setMenuOpen(!menuOpen)}>
+        <NavBarItem
+          onClick={() => setMenuOpen(!menuOpen)}
+          label="Main menu"
+          className={styles.grafanaLogo}
+          showMenu={false}
+        >
           <Branding.MenuLogo />
-        </NavBarItemWithoutMenu>
-        <NavBarItem className={styles.search} isActive={activeItem === searchItem} link={searchItem}>
+        </NavBarItem>
+        <NavBarItem
+          className={styles.search}
+          isActive={activeItem === searchItem}
+          label={searchItem.text}
+          onClick={searchItem.onClick}
+        >
           <Icon name="search" size="xl" />
         </NavBarItem>
       </NavBarSection>
@@ -71,7 +79,10 @@ export const NavBarNext: FC = React.memo(() => {
           <NavBarItem
             key={`${link.id}-${index}`}
             isActive={isMatchOrChildMatch(link, activeItem)}
-            link={{ ...link, subTitle: undefined, onClick: undefined }}
+            label={link.text}
+            menuItems={link.children}
+            target={link.target}
+            url={link.url}
           >
             {link.icon && <Icon name={link.icon as IconName} size="xl" />}
             {link.img && <img src={link.img} alt={`${link.text} logo`} />}
@@ -82,7 +93,16 @@ export const NavBarNext: FC = React.memo(() => {
       {pluginItems.length > 0 && (
         <NavBarSection>
           {pluginItems.map((link, index) => (
-            <NavBarItem key={`${link.id}-${index}`} isActive={isMatchOrChildMatch(link, activeItem)} link={link}>
+            <NavBarItem
+              key={`${link.id}-${index}`}
+              isActive={isMatchOrChildMatch(link, activeItem)}
+              label={link.text}
+              menuItems={link.children}
+              menuSubTitle={link.subTitle}
+              onClick={link.onClick}
+              target={link.target}
+              url={link.url}
+            >
               {link.icon && <Icon name={link.icon as IconName} size="xl" />}
               {link.img && <img src={link.img} alt={`${link.text} logo`} />}
             </NavBarItem>
@@ -97,8 +117,13 @@ export const NavBarNext: FC = React.memo(() => {
           <NavBarItem
             key={`${link.id}-${index}`}
             isActive={isMatchOrChildMatch(link, activeItem)}
+            label={link.text}
+            menuItems={link.children}
+            menuSubTitle={link.subTitle}
+            onClick={link.onClick}
             reverseMenuDirection
-            link={link}
+            target={link.target}
+            url={link.url}
           >
             {link.icon && <Icon name={link.icon as IconName} size="xl" />}
             {link.img && <img src={link.img} alt={`${link.text} logo`} />}

@@ -5,7 +5,6 @@ process.env.TZ = 'Pacific/Easter';
 
 module.exports = {
   verbose: false,
-  testEnvironment: 'jsdom',
   transform: {
     '^.+\\.(ts|tsx|js|jsx)$': require.resolve('ts-jest'),
   },

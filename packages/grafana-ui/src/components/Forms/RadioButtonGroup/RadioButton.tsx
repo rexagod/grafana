@@ -16,7 +16,6 @@ export interface RadioButtonProps {
   active: boolean;
   id: string;
   onChange: () => void;
-  onClick: () => void;
   fullWidth?: boolean;
   'aria-label'?: StringSelector;
   children?: React.ReactNode;
@@ -30,7 +29,6 @@ export const RadioButton = React.forwardRef<HTMLInputElement, RadioButtonProps>(
       disabled = false,
       size = 'md',
       onChange,
-      onClick,
       id,
       name = undefined,
       description,
@@ -48,7 +46,6 @@ export const RadioButton = React.forwardRef<HTMLInputElement, RadioButtonProps>(
           type="radio"
           className={styles.radio}
           onChange={onChange}
-          onClick={onClick}
           disabled={disabled}
           id={id}
           checked={active}

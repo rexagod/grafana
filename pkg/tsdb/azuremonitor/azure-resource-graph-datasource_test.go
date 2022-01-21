@@ -2,6 +2,7 @@ package azuremonitor
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/tsdb/legacydata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,15 +25,15 @@ func TestBuildingAzureResourceGraphQueries(t *testing.T) {
 	tests := []struct {
 		name                      string
 		queryModel                []backend.DataQuery
-		timeRange                 backend.TimeRange
+		timeRange                 legacydata.DataTimeRange
 		azureResourceGraphQueries []*AzureResourceGraphQuery
 		Err                       require.ErrorAssertionFunc
 	}{
 		{
 			name: "Query with macros should be interpolated",
-			timeRange: backend.TimeRange{
-				From: fromStart,
-				To:   fromStart.Add(34 * time.Minute),
+			timeRange: legacydata.DataTimeRange{
+				From: fmt.Sprintf("%v", fromStart.Unix()*1000),
+				To:   fmt.Sprintf("%v", fromStart.Add(34*time.Minute).Unix()*1000),
 			},
 			queryModel: []backend.DataQuery{
 				{

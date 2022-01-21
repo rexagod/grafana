@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -11,7 +10,6 @@ import (
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/teamguardian"
 	"github.com/grafana/grafana/pkg/util"
-	"github.com/grafana/grafana/pkg/web"
 )
 
 // GET /api/teams/:teamId/members
@@ -43,15 +41,11 @@ func (hs *HTTPServer) GetTeamMembers(c *models.ReqContext) response.Response {
 }
 
 // POST /api/teams/:teamId/members
-func (hs *HTTPServer) AddTeamMember(c *models.ReqContext) response.Response {
-	cmd := models.AddTeamMemberCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) AddTeamMember(c *models.ReqContext, cmd models.AddTeamMemberCommand) response.Response {
 	cmd.OrgId = c.OrgId
 	cmd.TeamId = c.ParamsInt64(":teamId")
 
-	if err := teamguardian.CanAdmin(c.Req.Context(), hs.Bus, cmd.OrgId, cmd.TeamId, c.SignedInUser); err != nil {
+	if err := teamguardian.CanAdmin(hs.Bus, cmd.OrgId, cmd.TeamId, c.SignedInUser); err != nil {
 		return response.Error(403, "Not allowed to add team member", err)
 	}
 
@@ -74,15 +68,11 @@ func (hs *HTTPServer) AddTeamMember(c *models.ReqContext) response.Response {
 }
 
 // PUT /:teamId/members/:userId
-func (hs *HTTPServer) UpdateTeamMember(c *models.ReqContext) response.Response {
-	cmd := models.UpdateTeamMemberCommand{}
-	if err := web.Bind(c.Req, &cmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) UpdateTeamMember(c *models.ReqContext, cmd models.UpdateTeamMemberCommand) response.Response {
 	teamId := c.ParamsInt64(":teamId")
 	orgId := c.OrgId
 
-	if err := teamguardian.CanAdmin(c.Req.Context(), hs.Bus, orgId, teamId, c.SignedInUser); err != nil {
+	if err := teamguardian.CanAdmin(hs.Bus, orgId, teamId, c.SignedInUser); err != nil {
 		return response.Error(403, "Not allowed to update team member", err)
 	}
 
@@ -109,7 +99,7 @@ func (hs *HTTPServer) RemoveTeamMember(c *models.ReqContext) response.Response {
 	teamId := c.ParamsInt64(":teamId")
 	userId := c.ParamsInt64(":userId")
 
-	if err := teamguardian.CanAdmin(c.Req.Context(), hs.Bus, orgId, teamId, c.SignedInUser); err != nil {
+	if err := teamguardian.CanAdmin(hs.Bus, orgId, teamId, c.SignedInUser); err != nil {
 		return response.Error(403, "Not allowed to remove team member", err)
 	}
 

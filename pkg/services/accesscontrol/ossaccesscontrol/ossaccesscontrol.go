@@ -64,19 +64,12 @@ func (ac *OSSAccessControlService) Evaluate(ctx context.Context, user *models.Si
 	defer timer.ObserveDuration()
 	metrics.MAccessEvaluationCount.Inc()
 
-	if user.Permissions == nil {
-		user.Permissions = map[int64]map[string][]string{}
+	permissions, err := ac.GetUserPermissions(ctx, user)
+	if err != nil {
+		return false, err
 	}
 
-	if _, ok := user.Permissions[user.OrgId]; !ok {
-		permissions, err := ac.GetUserPermissions(ctx, user)
-		if err != nil {
-			return false, err
-		}
-		user.Permissions[user.OrgId] = accesscontrol.GroupScopesByAction(permissions)
-	}
-
-	return evaluator.Evaluate(user.Permissions[user.OrgId])
+	return evaluator.Evaluate(accesscontrol.GroupScopesByAction(permissions))
 }
 
 // GetUserRoles returns user permissions based on built-in roles

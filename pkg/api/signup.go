@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -13,7 +12,6 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
-	"github.com/grafana/grafana/pkg/web"
 )
 
 // GET /api/user/signup/options
@@ -25,11 +23,7 @@ func GetSignUpOptions(c *models.ReqContext) response.Response {
 }
 
 // POST /api/user/signup
-func SignUp(c *models.ReqContext) response.Response {
-	form := dtos.SignUpForm{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func SignUp(c *models.ReqContext, form dtos.SignUpForm) response.Response {
 	if !setting.AllowUserSignUp {
 		return response.Error(401, "User signup is disabled", nil)
 	}
@@ -55,7 +49,7 @@ func SignUp(c *models.ReqContext) response.Response {
 		return response.Error(500, "Failed to create signup", err)
 	}
 
-	if err := bus.PublishCtx(c.Req.Context(), &events.SignUpStarted{
+	if err := bus.Publish(&events.SignUpStarted{
 		Email: form.Email,
 		Code:  cmd.Code,
 	}); err != nil {
@@ -67,11 +61,7 @@ func SignUp(c *models.ReqContext) response.Response {
 	return response.JSON(200, util.DynMap{"status": "SignUpCreated"})
 }
 
-func (hs *HTTPServer) SignUpStep2(c *models.ReqContext) response.Response {
-	form := dtos.SignUpStep2Form{}
-	if err := web.Bind(c.Req, &form); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
+func (hs *HTTPServer) SignUpStep2(c *models.ReqContext, form dtos.SignUpStep2Form) response.Response {
 	if !setting.AllowUserSignUp {
 		return response.Error(401, "User signup is disabled", nil)
 	}
@@ -102,7 +92,7 @@ func (hs *HTTPServer) SignUpStep2(c *models.ReqContext) response.Response {
 	}
 
 	// publish signup event
-	if err := bus.PublishCtx(c.Req.Context(), &events.SignUpCompleted{
+	if err := bus.Publish(&events.SignUpCompleted{
 		Email: user.Email,
 		Name:  user.NameOrFallback(),
 	}); err != nil {
