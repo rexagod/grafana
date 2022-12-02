@@ -305,8 +305,8 @@ github.com/cortexproject/cortex/pkg/util/log
 # github.com/cpuguy83/go-md2man/v2 v2.0.0
 ## explicit; go 1.12
 github.com/cpuguy83/go-md2man/v2/md2man
-# github.com/crewjam/saml v0.4.6-0.20210521115923-29c6295245bd => github.com/grafana/saml v0.0.0-20211007135653-aed1b2edd86b
-## explicit; go 1.13
+# github.com/crewjam/saml v0.4.9
+## explicit; go 1.16
 github.com/crewjam/saml
 github.com/crewjam/saml/logger
 github.com/crewjam/saml/xmlenc
@@ -473,8 +473,8 @@ github.com/gogo/protobuf/types
 # github.com/gogo/status v1.1.0
 ## explicit; go 1.12
 github.com/gogo/status
-# github.com/golang-jwt/jwt/v4 v4.0.0
-## explicit; go 1.15
+# github.com/golang-jwt/jwt/v4 v4.4.2
+## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
 # github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe
 ## explicit
@@ -510,8 +510,8 @@ github.com/google/btree
 # github.com/google/flatbuffers v2.0.0+incompatible
 ## explicit
 github.com/google/flatbuffers/go
-# github.com/google/go-cmp v0.5.6
-## explicit; go 1.8
+# github.com/google/go-cmp v0.5.8
+## explicit; go 1.13
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/cmpopts
 github.com/google/go-cmp/cmp/internal/diff
@@ -1092,7 +1092,7 @@ go.uber.org/atomic
 ## explicit; go 1.13
 go.uber.org/goleak
 go.uber.org/goleak/internal/stack
-# golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
+# golang.org/x/crypto v0.0.0-20220128200615-198e4374d7ed
 ## explicit; go 1.17
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
@@ -1117,7 +1117,7 @@ golang.org/x/crypto/ripemd160
 ## explicit; go 1.11
 golang.org/x/lint
 golang.org/x/lint/golint
-# golang.org/x/net v0.0.0-20210903162142-ad29c8ab022f
+# golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1380,7 +1380,6 @@ xorm.io/xorm
 # github.com/denisenkom/go-mssqldb => github.com/grafana/go-mssqldb v0.0.0-20210326084033-d0ce3c521036
 # k8s.io/client-go => k8s.io/client-go v0.22.1
 # github.com/russellhaering/goxmldsig@v1.1.0 => github.com/russellhaering/goxmldsig v1.1.1
-# github.com/crewjam/saml => github.com/grafana/saml v0.0.0-20211007135653-aed1b2edd86b
 # github.com/apache/thrift => github.com/apache/thrift v0.14.1
 # gopkg.in/macaron.v1 => ./pkg/macaron
 # github.com/go-macaron/binding => ./pkg/macaron/binding
