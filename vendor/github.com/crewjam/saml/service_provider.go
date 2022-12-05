@@ -3,6 +3,7 @@ package saml
 import (
 	"bytes"
 	"compress/flate"
+	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,9 +18,8 @@ import (
 	"regexp"
 	"time"
 
-	xrv "github.com/mattermost/xml-roundtrip-validator"
-
 	"github.com/beevik/etree"
+	xrv "github.com/mattermost/xml-roundtrip-validator"
 	dsig "github.com/russellhaering/goxmldsig"
 	"github.com/russellhaering/goxmldsig/etreeutils"
 
@@ -72,6 +72,9 @@ type ServiceProvider struct {
 	Certificate   *x509.Certificate
 	Intermediates []*x509.Certificate
 
+	// HTTPClient to use during SAML artifact resolution
+	HTTPClient *http.Client
+
 	// MetadataURL is the full URL to the metadata endpoint on this host,
 	// i.e. https://example.com/saml/metadata
 	MetadataURL url.URL
@@ -99,8 +102,15 @@ type ServiceProvider struct {
 	// has a SSO session at the IdP.
 	ForceAuthn *bool
 
+	// RequestedAuthnContext allow you to specify the requested authentication
+	// context in authentication requests
+	RequestedAuthnContext *RequestedAuthnContext
+
 	// AllowIdpInitiated
 	AllowIDPInitiated bool
+
+	// DefaultRedirectURI where untracked requests (as of IDPInitiated) are redirected to
+	DefaultRedirectURI string
 
 	// SignatureVerifier, if non-nil, allows you to implement an alternative way
 	// to verify signatures.
@@ -108,6 +118,10 @@ type ServiceProvider struct {
 
 	// SignatureMethod, if non-empty, authentication requests will be signed
 	SignatureMethod string
+
+	// LogoutBindings specify the bindings available for SLO endpoint. If empty,
+	// HTTP-POST binding is used.
+	LogoutBindings []string
 }
 
 // MaxIssueDelay is the longest allowed time between when a SAML assertion is
@@ -175,6 +189,15 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 		}
 	}
 
+	var sloEndpoints []Endpoint
+	for _, binding := range sp.LogoutBindings {
+		sloEndpoints = append(sloEndpoints, Endpoint{
+			Binding:          binding,
+			Location:         sp.SloURL.String(),
+			ResponseLocation: sp.SloURL.String(),
+		})
+	}
+
 	return &EntityDescriptor{
 		EntityID:   firstSet(sp.EntityID, sp.MetadataURL.String()),
 		ValidUntil: validUntil,
@@ -187,13 +210,8 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 						KeyDescriptors:             keyDescriptors,
 						ValidUntil:                 &validUntil,
 					},
-					SingleLogoutServices: []Endpoint{
-						{
-							Binding:          HTTPPostBinding,
-							Location:         sp.SloURL.String(),
-							ResponseLocation: sp.SloURL.String(),
-						},
-					},
+					SingleLogoutServices: sloEndpoints,
+					NameIDFormats:        []NameIDFormat{sp.AuthnNameIDFormat},
 				},
 				AuthnRequestsSigned:  &authnRequestsSigned,
 				WantAssertionsSigned: &wantAssertionsSigned,
@@ -203,6 +221,11 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 						Binding:  HTTPPostBinding,
 						Location: sp.AcsURL.String(),
 						Index:    1,
+					},
+					{
+						Binding:  HTTPArtifactBinding,
+						Location: sp.AcsURL.String(),
+						Index:    2,
 					},
 				},
 			},
@@ -214,7 +237,7 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 // the HTTP-Redirect binding. It returns a URL that we will redirect the user to
 // in order to start the auth process.
 func (sp *ServiceProvider) MakeRedirectAuthenticationRequest(relayState string) (*url.URL, error) {
-	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPRedirectBinding), HTTPRedirectBinding)
+	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPRedirectBinding), HTTPRedirectBinding, HTTPPostBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -279,6 +302,19 @@ func (sp *ServiceProvider) GetSSOBindingLocation(binding string) string {
 	return ""
 }
 
+// GetArtifactBindingLocation returns URL for the IDP's Artifact binding of the
+// specified type
+func (sp *ServiceProvider) GetArtifactBindingLocation(binding string) string {
+	for _, idpSSODescriptor := range sp.IDPMetadata.IDPSSODescriptors {
+		for _, artifactResolutionService := range idpSSODescriptor.ArtifactResolutionServices {
+			if artifactResolutionService.Binding == binding {
+				return artifactResolutionService.Location
+			}
+		}
+	}
+	return ""
+}
+
 // GetSLOBindingLocation returns URL for the IDP's Single Log Out Service binding
 // of the specified type (HTTPRedirectBinding or HTTPPostBinding)
 func (sp *ServiceProvider) GetSLOBindingLocation(binding string) string {
@@ -337,16 +373,38 @@ func (sp *ServiceProvider) getIDPSigningCerts() ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
+// MakeArtifactResolveRequest produces a new ArtifactResolve object to send to the idp's Artifact resolver
+func (sp *ServiceProvider) MakeArtifactResolveRequest(artifactID string) (*ArtifactResolve, error) {
+	req := ArtifactResolve{
+		ID:           fmt.Sprintf("id-%x", randomBytes(20)),
+		IssueInstant: TimeNow(),
+		Version:      "2.0",
+		Issuer: &Issuer{
+			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
+			Value:  firstSet(sp.EntityID, sp.MetadataURL.String()),
+		},
+		Artifact: artifactID,
+	}
+
+	if len(sp.SignatureMethod) > 0 {
+		if err := sp.SignArtifactResolve(&req); err != nil {
+			return nil, err
+		}
+	}
+
+	return &req, nil
+}
+
 // MakeAuthenticationRequest produces a new AuthnRequest object to send to the idpURL
 // that uses the specified binding (HTTPRedirectBinding or HTTPPostBinding)
-func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string, binding string) (*AuthnRequest, error) {
+func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string, binding string, resultBinding string) (*AuthnRequest, error) {
 
 	allowCreate := true
 	nameIDFormat := sp.nameIDFormat()
 	req := AuthnRequest{
 		AssertionConsumerServiceURL: sp.AcsURL.String(),
 		Destination:                 idpURL,
-		ProtocolBinding:             HTTPPostBinding, // default binding for the response
+		ProtocolBinding:             resultBinding, // default binding for the response
 		ID:                          fmt.Sprintf("id-%x", randomBytes(20)),
 		IssueInstant:                TimeNow(),
 		Version:                     "2.0",
@@ -361,7 +419,8 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string, binding stri
 			// urn:oasis:names:tc:SAML:2.0:nameid-format:transient
 			Format: &nameIDFormat,
 		},
-		ForceAuthn: sp.ForceAuthn,
+		ForceAuthn:            sp.ForceAuthn,
+		RequestedAuthnContext: sp.RequestedAuthnContext,
 	}
 	// We don't need to sign the XML document if the IDP uses HTTP-Redirect binding
 	if len(sp.SignatureMethod) > 0 && binding == HTTPPostBinding {
@@ -400,6 +459,24 @@ func GetSigningContext(sp *ServiceProvider) (*dsig.SigningContext, error) {
 	return signingContext, nil
 }
 
+// SignArtifactResolve adds the `Signature` element to the `ArtifactResolve`.
+func (sp *ServiceProvider) SignArtifactResolve(req *ArtifactResolve) error {
+	signingContext, err := GetSigningContext(sp)
+	if err != nil {
+		return err
+	}
+	assertionEl := req.Element()
+
+	signedRequestEl, err := signingContext.SignEnveloped(assertionEl)
+	if err != nil {
+		return err
+	}
+
+	sigEl := signedRequestEl.Child[len(signedRequestEl.Child)-1]
+	req.Signature = sigEl.(*etree.Element)
+	return nil
+}
+
 // SignAuthnRequest adds the `Signature` element to the `AuthnRequest`.
 func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
 
@@ -423,7 +500,7 @@ func (sp *ServiceProvider) SignAuthnRequest(req *AuthnRequest) error {
 // the HTTP-POST binding. It returns HTML text representing an HTML form that
 // can be sent presented to a browser to initiate the login process.
 func (sp *ServiceProvider) MakePostAuthenticationRequest(relayState string) ([]byte, error) {
-	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPPostBinding), HTTPPostBinding)
+	req, err := sp.MakeAuthenticationRequest(sp.GetSSOBindingLocation(HTTPPostBinding), HTTPPostBinding, HTTPPostBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -515,46 +592,66 @@ func (e ErrBadStatus) Error() string {
 	return e.Status
 }
 
-func responseIsSigned(response *etree.Document) (bool, error) {
-	signatureElement, err := findChild(response.Root(), "http://www.w3.org/2000/09/xmldsig#", "Signature")
-	if err != nil {
-		return false, err
-	}
-	return signatureElement != nil, nil
-}
-
-// validateDestination validates the Destination attribute.
-// If the response is signed, the Destination is required to be present.
-func (sp *ServiceProvider) validateDestination(response []byte, responseDom *Response) error {
-	responseXML := etree.NewDocument()
-	err := responseXML.ReadFromBytes(response)
-	if err != nil {
-		return err
-	}
-
-	signed, err := responseIsSigned(responseXML)
-	if err != nil {
-		return err
-	}
-
-	// Compare if the response is signed OR the Destination is provided.
-	// (Even if the response is not signed, if the Destination is set it must match.)
-	if signed || responseDom.Destination != "" {
-		if responseDom.Destination != sp.AcsURL.String() {
-			return fmt.Errorf("`Destination` does not match AcsURL (expected %q, actual %q)", sp.AcsURL.String(), responseDom.Destination)
-		}
-	}
-
-	return nil
-}
-
-// ParseResponse extracts the SAML IDP response received in req, validates
-// it, and returns the verified assertion.
+// ParseResponse extracts the SAML IDP response received in req, resolves
+// artifacts when necessary, validates it, and returns the verified assertion.
 func (sp *ServiceProvider) ParseResponse(req *http.Request, possibleRequestIDs []string) (*Assertion, error) {
-	now := TimeNow()
+	if artifactID := req.Form.Get("SAMLart"); artifactID != "" {
+		return sp.handleArtifactRequest(req.Context(), artifactID, possibleRequestIDs)
+	}
+	return sp.parseResponseHTTP(req, possibleRequestIDs)
+}
+
+func (sp *ServiceProvider) handleArtifactRequest(ctx context.Context, artifactID string, possibleRequestIDs []string) (*Assertion, error) {
+	retErr := &InvalidResponseError{Now: TimeNow()}
+
+	artifactResolveRequest, err := sp.MakeArtifactResolveRequest(artifactID)
+	if err != nil {
+		retErr.PrivateErr = fmt.Errorf("Cannot generate artifact resolution request: %s", err)
+		return nil, retErr
+	}
+
+	requestBody, err := elementToBytes(artifactResolveRequest.SoapRequest())
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", sp.GetArtifactBindingLocation(SOAPBinding),
+		bytes.NewReader(requestBody))
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	httpClient := sp.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	response, err := httpClient.Do(req)
+	if err != nil {
+		retErr.PrivateErr = fmt.Errorf("cannot resolve artifact: %s", err)
+		return nil, retErr
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		retErr.PrivateErr = fmt.Errorf("Error during artifact resolution: HTTP status %d (%s)", response.StatusCode, response.Status)
+		return nil, retErr
+	}
+	responseBody, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		retErr.PrivateErr = fmt.Errorf("Error during artifact resolution: %s", err)
+		return nil, retErr
+	}
+	assertion, err := sp.ParseXMLArtifactResponse(responseBody, possibleRequestIDs, artifactResolveRequest.ID)
+	if err != nil {
+		return nil, err
+	}
+	return assertion, nil
+}
+
+func (sp *ServiceProvider) parseResponseHTTP(req *http.Request, possibleRequestIDs []string) (*Assertion, error) {
 	retErr := &InvalidResponseError{
-		Now:      now,
-		Response: req.PostForm.Get("SAMLResponse"),
+		Now: TimeNow(),
 	}
 
 	rawResponseBuf, err := base64.StdEncoding.DecodeString(req.PostForm.Get("SAMLResponse"))
@@ -562,17 +659,120 @@ func (sp *ServiceProvider) ParseResponse(req *http.Request, possibleRequestIDs [
 		retErr.PrivateErr = fmt.Errorf("cannot parse base64: %s", err)
 		return nil, retErr
 	}
-	retErr.Response = string(rawResponseBuf)
+
 	assertion, err := sp.ParseXMLResponse(rawResponseBuf, possibleRequestIDs)
 	if err != nil {
 		return nil, err
 	}
-
 	return assertion, nil
-
 }
 
-// ParseXMLResponse validates the SAML IDP response and
+// ParseXMLArtifactResponse validates the SAML Artifact resolver response
+// and returns the verified assertion.
+//
+// This function handles verifying the digital signature, and verifying
+// that the specified conditions and properties are met.
+//
+// If the function fails it will return an InvalidResponseError whose
+// properties are useful in describing which part of the parsing process
+// failed. However, to discourage inadvertent disclosure the diagnostic
+// information, the Error() method returns a static string.
+func (sp *ServiceProvider) ParseXMLArtifactResponse(soapResponseXML []byte, possibleRequestIDs []string, artifactRequestID string) (*Assertion, error) {
+	now := TimeNow()
+	retErr := &InvalidResponseError{
+		Response: string(soapResponseXML),
+		Now:      now,
+	}
+
+	// ensure that the response XML is well-formed before we parse it
+	if err := xrv.Validate(bytes.NewReader(soapResponseXML)); err != nil {
+		retErr.PrivateErr = fmt.Errorf("invalid xml: %s", err)
+		return nil, retErr
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(soapResponseXML); err != nil {
+		retErr.PrivateErr = fmt.Errorf("cannot unmarshal response: %s", err)
+		return nil, retErr
+	}
+	if doc.Root().NamespaceURI() != "http://schemas.xmlsoap.org/soap/envelope/" ||
+		doc.Root().Tag != "Envelope" {
+		retErr.PrivateErr = fmt.Errorf("expected a SOAP Envelope")
+		return nil, retErr
+	}
+
+	soapBodyEl, err := findOneChild(doc.Root(), "http://schemas.xmlsoap.org/soap/envelope/", "Body")
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	artifactResponseEl, err := findOneChild(soapBodyEl, "urn:oasis:names:tc:SAML:2.0:protocol", "ArtifactResponse")
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	return sp.parseArtifactResponse(artifactResponseEl, possibleRequestIDs, artifactRequestID, now)
+}
+
+func (sp *ServiceProvider) parseArtifactResponse(artifactResponseEl *etree.Element, possibleRequestIDs []string, artifactRequestID string, now time.Time) (*Assertion, error) {
+	retErr := &InvalidResponseError{
+		Now:      now,
+		Response: elementToString(artifactResponseEl),
+	}
+
+	{
+		var artifactResponse ArtifactResponse
+		if err := unmarshalElement(artifactResponseEl, &artifactResponse); err != nil {
+			retErr.PrivateErr = err
+			return nil, retErr
+		}
+		if artifactResponse.InResponseTo != artifactRequestID {
+			retErr.PrivateErr = fmt.Errorf("`InResponseTo` does not match the artifact request ID (expected %s)", artifactRequestID)
+			return nil, retErr
+		}
+		if artifactResponse.IssueInstant.Add(MaxIssueDelay).Before(now) {
+			retErr.PrivateErr = fmt.Errorf("response IssueInstant expired at %s", artifactResponse.IssueInstant.Add(MaxIssueDelay))
+			return nil, retErr
+		}
+		if artifactResponse.Issuer != nil && artifactResponse.Issuer.Value != sp.IDPMetadata.EntityID {
+			retErr.PrivateErr = fmt.Errorf("response Issuer does not match the IDP metadata (expected %q)", sp.IDPMetadata.EntityID)
+			return nil, retErr
+		}
+		if artifactResponse.Status.StatusCode.Value != StatusSuccess {
+			retErr.PrivateErr = ErrBadStatus{Status: artifactResponse.Status.StatusCode.Value}
+			return nil, retErr
+		}
+	}
+
+	var signatureRequirement signatureRequirement
+	sigErr := sp.validateSignature(artifactResponseEl)
+	if sigErr == nil {
+		signatureRequirement = signatureNotRequired
+	} else if sigErr == errSignatureElementNotPresent {
+		signatureRequirement = signatureRequired
+	} else {
+		retErr.PrivateErr = sigErr
+		return nil, retErr
+	}
+
+	responseEl, err := findOneChild(artifactResponseEl, "urn:oasis:names:tc:SAML:2.0:protocol", "Response")
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	assertion, err := sp.parseResponse(responseEl, possibleRequestIDs, now, signatureRequirement)
+	if err != nil {
+		retErr.PrivateErr = err
+		return nil, retErr
+	}
+
+	return assertion, nil
+}
+
+// ParseXMLResponse parses and validates the SAML IDP response and
 // returns the verified assertion.
 //
 // This function handles decrypting the message, verifying the digital
@@ -591,152 +791,213 @@ func (sp *ServiceProvider) ParseXMLResponse(decodedResponseXML []byte, possibleR
 		Response: string(decodedResponseXML),
 	}
 
-	// ensure that the response XML is well formed before we parse it
+	// ensure that the response XML is well-formed before we parse it
 	if err := xrv.Validate(bytes.NewReader(decodedResponseXML)); err != nil {
 		retErr.PrivateErr = fmt.Errorf("invalid xml: %s", err)
 		return nil, retErr
 	}
 
-	// do some validation first before we decrypt
-	resp := Response{}
-	if err := xml.Unmarshal(decodedResponseXML, &resp); err != nil {
-		retErr.PrivateErr = fmt.Errorf("cannot unmarshal response: %s", err)
-		return nil, retErr
-	}
-
-	if err := sp.validateDestination(decodedResponseXML, &resp); err != nil {
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(decodedResponseXML); err != nil {
 		retErr.PrivateErr = err
 		return nil, retErr
 	}
 
-	requestIDvalid := false
-
-	if sp.AllowIDPInitiated {
-		requestIDvalid = true
-	} else {
-		for _, possibleRequestID := range possibleRequestIDs {
-			if resp.InResponseTo == possibleRequestID {
-				requestIDvalid = true
-			}
-		}
-	}
-
-	if !requestIDvalid {
-		retErr.PrivateErr = fmt.Errorf("`InResponseTo` does not match any of the possible request IDs (expected %v)", possibleRequestIDs)
-		return nil, retErr
-	}
-
-	if resp.IssueInstant.Add(MaxIssueDelay).Before(now) {
-		retErr.PrivateErr = fmt.Errorf("response IssueInstant expired at %s", resp.IssueInstant.Add(MaxIssueDelay))
-		return nil, retErr
-	}
-	if resp.Issuer != nil && resp.Issuer.Value != sp.IDPMetadata.EntityID {
-		retErr.PrivateErr = fmt.Errorf("response Issuer does not match the IDP metadata (expected %q)", sp.IDPMetadata.EntityID)
-		return nil, retErr
-	}
-	if resp.Status.StatusCode.Value != StatusSuccess {
-		retErr.PrivateErr = ErrBadStatus{Status: resp.Status.StatusCode.Value}
-		return nil, retErr
-	}
-
-	var assertion *Assertion
-	if resp.EncryptedAssertion == nil {
-
-		doc := etree.NewDocument()
-		if err := doc.ReadFromBytes(decodedResponseXML); err != nil {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-
-		// TODO(ross): verify that the namespace is urn:oasis:names:tc:SAML:2.0:protocol
-		responseEl := doc.Root()
-		if responseEl.Tag != "Response" {
-			retErr.PrivateErr = fmt.Errorf("expected to find a response object, not %s", doc.Root().Tag)
-			return nil, retErr
-		}
-
-		if err = sp.validateSigned(responseEl); err != nil {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-
-		assertion = resp.Assertion
-	}
-
-	// decrypt the response
-	if resp.EncryptedAssertion != nil {
-		doc := etree.NewDocument()
-		if err := doc.ReadFromBytes(decodedResponseXML); err != nil {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-
-		// encrypted assertions are part of the signature
-		// before decrypting the response verify that
-		responseSigned, err := responseIsSigned(doc)
-		if err != nil {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-		if responseSigned {
-			if err := sp.validateSigned(doc.Root()); err != nil {
-				retErr.PrivateErr = err
-				return nil, retErr
-			}
-		}
-
-		var key interface{} = sp.Key
-		keyEl := doc.FindElement("//EncryptedAssertion/EncryptedKey")
-		if keyEl != nil {
-			key, err = xmlenc.Decrypt(sp.Key, keyEl)
-			if err != nil {
-				retErr.PrivateErr = fmt.Errorf("failed to decrypt key from response: %s", err)
-				return nil, retErr
-			}
-		}
-
-		el := doc.FindElement("//EncryptedAssertion/EncryptedData")
-		plaintextAssertion, err := xmlenc.Decrypt(key, el)
-		if err != nil {
-			retErr.PrivateErr = fmt.Errorf("failed to decrypt response: %s", err)
-			return nil, retErr
-		}
-		retErr.Response = string(plaintextAssertion)
-
-		// TODO(ross): add test case for this
-		if err := xrv.Validate(bytes.NewReader(plaintextAssertion)); err != nil {
-			retErr.PrivateErr = fmt.Errorf("plaintext response contains invalid XML: %s", err)
-			return nil, retErr
-		}
-
-		doc = etree.NewDocument()
-		if err := doc.ReadFromBytes(plaintextAssertion); err != nil {
-			retErr.PrivateErr = fmt.Errorf("cannot parse plaintext response %v", err)
-			return nil, retErr
-		}
-
-		// the decrypted assertion may be signed too
-		// otherwise, a signed response is sufficient
-		if err := sp.validateSigned(doc.Root()); err != nil && !responseSigned {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-
-		assertion = &Assertion{}
-		// Note: plaintextAssertion is known to be safe to parse because
-		// plaintextAssertion is unmodified from when xrv.Validate() was called above.
-		if err := xml.Unmarshal(plaintextAssertion, assertion); err != nil {
-			retErr.PrivateErr = err
-			return nil, retErr
-		}
-	}
-
-	if err := sp.validateAssertion(assertion, possibleRequestIDs, now); err != nil {
-		retErr.PrivateErr = fmt.Errorf("assertion invalid: %s", err)
+	assertion, err := sp.parseResponse(doc.Root(), possibleRequestIDs, now, signatureRequired)
+	if err != nil {
+		retErr.PrivateErr = err
 		return nil, retErr
 	}
 
 	return assertion, nil
+}
+
+type signatureRequirement int
+
+const (
+	signatureRequired signatureRequirement = iota
+	signatureNotRequired
+)
+
+// validateXMLResponse validates the SAML IDP response and returns
+// the verified assertion.
+//
+// This function handles decrypting the message, verifying the digital
+// signature on the assertion, and verifying that the specified conditions
+// and properties are met.
+func (sp *ServiceProvider) parseResponse(responseEl *etree.Element, possibleRequestIDs []string, now time.Time, signatureRequirement signatureRequirement) (*Assertion, error) {
+	var responseSignatureErr error
+	var responseHasSignature bool
+	if signatureRequirement == signatureRequired {
+		responseSignatureErr = sp.validateSignature(responseEl)
+		if responseSignatureErr != errSignatureElementNotPresent {
+			responseHasSignature = true
+		}
+
+		// Note: we're deferring taking action on the signature validation until after we've
+		// processed the request attributes, because certain test cases seem to require this mis-feature.
+		// TODO(ross): adjust the test cases so that we can abort here if the Response signature is invalid.
+	}
+
+	// validate request attributes
+	{
+		var response Response
+		if err := unmarshalElement(responseEl, &response); err != nil {
+			return nil, fmt.Errorf("cannot unmarshal response: %v", err)
+		}
+
+		// If the response is *not* signed, the Destination may be omitted.
+		if responseHasSignature || response.Destination != "" {
+			if response.Destination != sp.AcsURL.String() {
+				return nil, fmt.Errorf("`Destination` does not match AcsURL (expected %q, actual %q)", sp.AcsURL.String(), response.Destination)
+			}
+		}
+
+		requestIDvalid := false
+		if sp.AllowIDPInitiated {
+			requestIDvalid = true
+		} else {
+			for _, possibleRequestID := range possibleRequestIDs {
+				if response.InResponseTo == possibleRequestID {
+					requestIDvalid = true
+				}
+			}
+		}
+		if !requestIDvalid {
+			return nil, fmt.Errorf("`InResponseTo` does not match any of the possible request IDs (expected %v)", possibleRequestIDs)
+		}
+
+		if response.IssueInstant.Add(MaxIssueDelay).Before(now) {
+			return nil, fmt.Errorf("response IssueInstant expired at %s", response.IssueInstant.Add(MaxIssueDelay))
+		}
+		if response.Issuer != nil && response.Issuer.Value != sp.IDPMetadata.EntityID {
+			return nil, fmt.Errorf("response Issuer does not match the IDP metadata (expected %q)", sp.IDPMetadata.EntityID)
+		}
+		if response.Status.StatusCode.Value != StatusSuccess {
+			return nil, ErrBadStatus{Status: response.Status.StatusCode.Value}
+		}
+	}
+
+	if signatureRequirement == signatureRequired {
+		if responseSignatureErr == nil {
+			// since the request has a signature, none of the Assertions need one
+			signatureRequirement = signatureNotRequired
+		} else if responseSignatureErr == errSignatureElementNotPresent {
+			// the request has no signature, so assertions must be signed
+			signatureRequirement = signatureRequired // nop
+		} else {
+			return nil, responseSignatureErr
+		}
+	}
+
+	var errs []error
+	var assertions []Assertion
+
+	// look for encrypted assertions
+	{
+		encryptedAssertionEls, err := findChildren(responseEl, "urn:oasis:names:tc:SAML:2.0:assertion", "EncryptedAssertion")
+		if err != nil {
+			return nil, err
+		}
+		for _, encryptedAssertionEl := range encryptedAssertionEls {
+			assertion, err := sp.parseEncryptedAssertion(encryptedAssertionEl, possibleRequestIDs, now, signatureRequirement)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			assertions = append(assertions, *assertion)
+		}
+	}
+
+	// look for plaintext assertions
+	{
+		assertionEls, err := findChildren(responseEl, "urn:oasis:names:tc:SAML:2.0:assertion", "Assertion")
+		if err != nil {
+			return nil, err
+		}
+		for _, assertionEl := range assertionEls {
+			assertion, err := sp.parseAssertion(assertionEl, possibleRequestIDs, now, signatureRequirement)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			assertions = append(assertions, *assertion)
+		}
+	}
+
+	if len(assertions) == 0 {
+		if len(errs) > 0 {
+			return nil, errs[0]
+		}
+		return nil, fmt.Errorf("expected at least one valid Assertion, none found")
+	}
+
+	// if we have at least one assertion, return the first one. It is almost universally true that valid responses
+	// contain only one assertion. This is less that fully correct, but we didn't realize that there could be more
+	// than one assertion at the time of establishing the public interface of ParseXMLResponse(), so for compatability
+	// we return the first one.
+	return &assertions[0], nil
+}
+
+func (sp *ServiceProvider) parseEncryptedAssertion(encryptedAssertionEl *etree.Element, possibleRequestIDs []string, now time.Time, signatureRequirement signatureRequirement) (*Assertion, error) {
+	assertionEl, err := sp.decryptElement(encryptedAssertionEl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt EncryptedAssertion: %v", err)
+	}
+	return sp.parseAssertion(assertionEl, possibleRequestIDs, now, signatureRequirement)
+}
+
+func (sp *ServiceProvider) decryptElement(encryptedEl *etree.Element) (*etree.Element, error) {
+	encryptedDataEl, err := findOneChild(encryptedEl, "http://www.w3.org/2001/04/xmlenc#", "EncryptedData")
+	if err != nil {
+		return nil, err
+	}
+
+	var key interface{} = sp.Key
+	keyEl := encryptedEl.FindElement("./EncryptedKey")
+	if keyEl != nil {
+		var err error
+		key, err = xmlenc.Decrypt(sp.Key, keyEl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt key from response: %s", err)
+		}
+	}
+
+	plaintextEl, err := xmlenc.Decrypt(key, encryptedDataEl)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := xrv.Validate(bytes.NewReader(plaintextEl)); err != nil {
+		return nil, fmt.Errorf("plaintext response contains invalid XML: %s", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(plaintextEl); err != nil {
+		return nil, fmt.Errorf("cannot parse plaintext response %v", err)
+	}
+	return doc.Root(), nil
+}
+
+func (sp *ServiceProvider) parseAssertion(assertionEl *etree.Element, possibleRequestIDs []string, now time.Time, signatureRequirement signatureRequirement) (*Assertion, error) {
+	if signatureRequirement == signatureRequired {
+		sigErr := sp.validateSignature(assertionEl)
+		if sigErr != nil {
+			return nil, sigErr
+		}
+	}
+
+	// parse the assertion we just validated
+	var assertion Assertion
+	if err := unmarshalElement(assertionEl, &assertion); err != nil {
+		return nil, err
+	}
+
+	if err := sp.validateAssertion(&assertion, possibleRequestIDs, now); err != nil {
+		return nil, err
+	}
+
+	return &assertion, nil
 }
 
 // validateAssertion checks that the conditions specified in assertion match
@@ -808,81 +1069,21 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	return nil
 }
 
-func findChild(parentEl *etree.Element, childNS string, childTag string) (*etree.Element, error) {
-	for _, childEl := range parentEl.ChildElements() {
-		if childEl.Tag != childTag {
-			continue
-		}
+var errSignatureElementNotPresent = errors.New("Signature element not present")
 
-		ctx, err := etreeutils.NSBuildParentContext(childEl)
-		if err != nil {
-			return nil, err
-		}
-		ctx, err = ctx.SubContext(childEl)
-		if err != nil {
-			return nil, err
-		}
-
-		ns, err := ctx.LookupPrefix(childEl.Space)
-		if err != nil {
-			return nil, fmt.Errorf("[%s]:%s cannot find prefix %s: %v", childNS, childTag, childEl.Space, err)
-		}
-		if ns != childNS {
-			continue
-		}
-
-		return childEl, nil
-	}
-	return nil, nil
-}
-
-// validateSigned returns a nil error iff each of the signatures on the Response and Assertion elements
-// are valid and there is at least one signature.
-func (sp *ServiceProvider) validateSigned(responseEl *etree.Element) error {
-	haveSignature := false
-
-	// Some SAML responses have the signature on the Response object, and some on the Assertion
-	// object, and some on both. We will require that at least one signature be present and that
-	// all signatures be valid
-	sigEl, err := findChild(responseEl, "http://www.w3.org/2000/09/xmldsig#", "Signature")
-	if err != nil {
-		return err
-	}
-	if sigEl != nil {
-		if err = sp.validateSignature(responseEl); err != nil {
-			return fmt.Errorf("cannot validate signature on Response: %v", err)
-		}
-		haveSignature = true
-	}
-
-	assertionEl, err := findChild(responseEl, "urn:oasis:names:tc:SAML:2.0:assertion", "Assertion")
-	if err != nil {
-		return err
-	}
-	if assertionEl != nil {
-		sigEl, err := findChild(assertionEl, "http://www.w3.org/2000/09/xmldsig#", "Signature")
-		if err != nil {
-			return err
-		}
-		if sigEl != nil {
-			if err = sp.validateSignature(assertionEl); err != nil {
-				return fmt.Errorf("cannot validate signature on Response: %v", err)
-			}
-			haveSignature = true
-		}
-	}
-
-	if !haveSignature {
-		return errors.New("either the Response or Assertion must be signed")
-	}
-	return nil
-}
-
-// validateSignature returns nill iff the Signature embedded in the element is valid
+// validateSignature returns nil iff the Signature embedded in the element is valid
 func (sp *ServiceProvider) validateSignature(el *etree.Element) error {
+	sigEl, err := findChild(el, "http://www.w3.org/2000/09/xmldsig#", "Signature")
+	if err != nil {
+		return err
+	}
+	if sigEl == nil {
+		return errSignatureElementNotPresent
+	}
+
 	certs, err := sp.getIDPSigningCerts()
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
 	}
 
 	certificateStore := dsig.MemoryX509CertificateStore{
@@ -914,23 +1115,26 @@ func (sp *ServiceProvider) validateSignature(el *etree.Element) error {
 
 	ctx, err := etreeutils.NSBuildParentContext(el)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
 	}
 	ctx, err = ctx.SubContext(el)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
 	}
 	el, err = etreeutils.NSDetatch(ctx, el)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
 	}
 
 	if sp.SignatureVerifier != nil {
 		return sp.SignatureVerifier.VerifySignature(validationContext, el)
 	}
 
-	_, err = validationContext.Validate(el)
-	return err
+	if _, err := validationContext.Validate(el); err != nil {
+		return fmt.Errorf("cannot validate signature on %s: %v", el.Tag, err)
+	}
+
+	return nil
 }
 
 // SignLogoutRequest adds the `Signature` element to the `LogoutRequest`.
@@ -1257,35 +1461,41 @@ func (sp *ServiceProvider) ValidateLogoutResponseRequest(req *http.Request) erro
 
 // ValidateLogoutResponseForm returns a nil error if the logout response is valid.
 func (sp *ServiceProvider) ValidateLogoutResponseForm(postFormData string) error {
+	retErr := &InvalidResponseError{
+		Now: TimeNow(),
+	}
+
 	rawResponseBuf, err := base64.StdEncoding.DecodeString(postFormData)
 	if err != nil {
-		return fmt.Errorf("unable to parse base64: %s", err)
+		retErr.PrivateErr = fmt.Errorf("unable to parse base64: %s", err)
+		return retErr
 	}
+	retErr.Response = string(rawResponseBuf)
 
 	// TODO(ross): add test case for this (SLO does not have tests right now)
 	if err := xrv.Validate(bytes.NewReader(rawResponseBuf)); err != nil {
 		return fmt.Errorf("response contains invalid XML: %s", err)
 	}
 
-	var resp LogoutResponse
-	if err := xml.Unmarshal(rawResponseBuf, &resp); err != nil {
-		return fmt.Errorf("cannot unmarshal response: %s", err)
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(rawResponseBuf); err != nil {
+		retErr.PrivateErr = err
+		return retErr
 	}
 
+	if err := sp.validateSignature(doc.Root()); err != nil {
+		retErr.PrivateErr = err
+		return retErr
+	}
+
+	var resp LogoutResponse
+	if err := unmarshalElement(doc.Root(), &resp); err != nil {
+		retErr.PrivateErr = err
+		return retErr
+	}
 	if err := sp.validateLogoutResponse(&resp); err != nil {
 		return err
 	}
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromBytes(rawResponseBuf); err != nil {
-		return err
-	}
-
-	responseEl := doc.Root()
-	if err = sp.validateSigned(responseEl); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -1294,43 +1504,46 @@ func (sp *ServiceProvider) ValidateLogoutResponseForm(postFormData string) error
 // URL Binding appears to be gzip / flate encoded
 // See https://www.oasis-open.org/committees/download.php/20645/sstc-saml-tech-overview-2%200-draft-10.pdf  6.6
 func (sp *ServiceProvider) ValidateLogoutResponseRedirect(queryParameterData string) error {
+	retErr := &InvalidResponseError{
+		Now: TimeNow(),
+	}
+
 	rawResponseBuf, err := base64.StdEncoding.DecodeString(queryParameterData)
 	if err != nil {
-		return fmt.Errorf("unable to parse base64: %s", err)
+		retErr.PrivateErr = fmt.Errorf("unable to parse base64: %s", err)
+		return retErr
 	}
+	retErr.Response = string(rawResponseBuf)
 
 	gr, err := ioutil.ReadAll(flate.NewReader(bytes.NewBuffer(rawResponseBuf)))
 	if err != nil {
-		return err
+		retErr.PrivateErr = err
+		return retErr
 	}
 
 	if err := xrv.Validate(bytes.NewReader(gr)); err != nil {
 		return err
 	}
 
-	decoder := xml.NewDecoder(bytes.NewReader(gr))
-
-	var resp LogoutResponse
-
-	err = decoder.Decode(&resp)
-	if err != nil {
-		return fmt.Errorf("unable to flate decode: %s", err)
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(rawResponseBuf); err != nil {
+		retErr.PrivateErr = err
+		return retErr
 	}
 
+	if err := sp.validateSignature(doc.Root()); err != nil {
+		retErr.PrivateErr = err
+		return retErr
+	}
+
+	var resp LogoutResponse
+	if err := unmarshalElement(doc.Root(), &resp); err != nil {
+		retErr.PrivateErr = err
+		return retErr
+	}
 	if err := sp.validateLogoutResponse(&resp); err != nil {
 		return err
 	}
-
-	doc := etree.NewDocument()
-	if _, err := doc.ReadFrom(bytes.NewReader(gr)); err != nil {
-		return err
-	}
-
-	responseEl := doc.Root()
-	if err = sp.validateSigned(responseEl); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -1359,4 +1572,102 @@ func firstSet(a, b string) string {
 		return b
 	}
 	return a
+}
+
+// findChildren returns all the elements matching childNS/childTag that are direct children of parentEl.
+func findChildren(parentEl *etree.Element, childNS string, childTag string) ([]*etree.Element, error) {
+	var rv []*etree.Element
+	for _, childEl := range parentEl.ChildElements() {
+		if childEl.Tag != childTag {
+			continue
+		}
+
+		ctx, err := etreeutils.NSBuildParentContext(childEl)
+		if err != nil {
+			return nil, err
+		}
+		ctx, err = ctx.SubContext(childEl)
+		if err != nil {
+			return nil, err
+		}
+
+		ns, err := ctx.LookupPrefix(childEl.Space)
+		if err != nil {
+			return nil, fmt.Errorf("[%s]:%s cannot find prefix %s: %v", childNS, childTag, childEl.Space, err)
+		}
+		if ns != childNS {
+			continue
+		}
+
+		rv = append(rv, childEl)
+	}
+
+	return rv, nil
+}
+
+// findOneChild finds the specified child element. Returns an error if the element doesn't exist.
+func findOneChild(parentEl *etree.Element, childNS string, childTag string) (*etree.Element, error) {
+	children, err := findChildren(parentEl, childNS, childTag)
+	if err != nil {
+		return nil, err
+	}
+	switch len(children) {
+	case 0:
+		return nil, fmt.Errorf("cannot find %s:%s element", childNS, childTag)
+	case 1:
+		return children[0], nil
+	default:
+		return nil, fmt.Errorf("expected exactly one %s:%s element", childNS, childTag)
+	}
+}
+
+// findChild finds the specified child element. Returns (nil, nil) of the element doesn't exist.
+func findChild(parentEl *etree.Element, childNS string, childTag string) (*etree.Element, error) {
+	children, err := findChildren(parentEl, childNS, childTag)
+	if err != nil {
+		return nil, err
+	}
+	switch len(children) {
+	case 0:
+		return nil, nil
+	case 1:
+		return children[0], nil
+	default:
+		return nil, fmt.Errorf("expected at most one %s:%s element", childNS, childTag)
+	}
+}
+
+func elementToBytes(el *etree.Element) ([]byte, error) {
+	namespaces := map[string]string{}
+	for _, childEl := range el.FindElements("//*") {
+		ns := childEl.NamespaceURI()
+		if ns != "" {
+			namespaces[childEl.Space] = ns
+		}
+	}
+
+	doc := etree.NewDocument()
+	doc.SetRoot(el.Copy())
+	for space, uri := range namespaces {
+		doc.Root().CreateAttr("xmlns:"+space, uri)
+	}
+
+	return doc.WriteToBytes()
+}
+
+// unmarshalElement serializes el into v by serializing el and then parsing it with xml.Unmarshal.
+func unmarshalElement(el *etree.Element, v interface{}) error {
+	buf, err := elementToBytes(el)
+	if err != nil {
+		return err
+	}
+	return xml.Unmarshal(buf, v)
+}
+
+func elementToString(el *etree.Element) string {
+	buf, err := elementToBytes(el)
+	if err != nil {
+		return ""
+	}
+	return string(buf)
 }
