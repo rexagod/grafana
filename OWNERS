@@ -1,30 +1,30 @@
 component: "Monitoring"
 
 reviewers:
-- bwplotka
 - simonpasquier
 - slashpai
 - prashbnair
-- arajkumar
 - sthaha
 - PhilipGough
 - bison
 - fpetkovski
 - raptorsun
 - jan--f
+- rexagod
+- machine424
 
 approvers:
-- bwplotka
 - simonpasquier
 - slashpai
 - prashbnair
-- arajkumar
 - sthaha
 - PhilipGough
 - bison
 - fpetkovski
 - raptorsun
 - jan--f
+- rexagod
+- machine424
 
 emeritus_approvers:
 - brancz
@@ -36,3 +36,5 @@ emeritus_approvers:
 - krasi-georgiev
 - s-urbaniak
 - LiliC
+- bwplotka
+- arajkumar
